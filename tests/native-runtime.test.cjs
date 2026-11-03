@@ -28,6 +28,8 @@ test('native runtime is ready from its managed venv and starts Python without a 
   fs.mkdirSync(path.dirname(rt.python),{recursive:true});fs.writeFileSync(rt.python,'fake');fs.writeFileSync(rt.configFile,JSON.stringify({version:2,flavor:'cpu',gpu:false}));
   const status=await rt.inspect();assert.equal(status.ready,true);assert.equal(status.native,true);assert.equal(status.gpu,false);
   await rt.start();assert.equal(spawned.command,rt.python);assert.deepEqual(spawned.args,[rt.entry]);assert.equal(spawned.options.shell,false);assert.equal(spawned.options.stdio[0],'pipe');
+  assert.equal(spawned.options.env.HF_HOME,path.join(f.workspace,'models','huggingface-native'));
+  assert.equal(spawned.options.env.HF_HUB_DISABLE_SYMLINKS_WARNING,'1');assert.equal(spawned.options.env.HF_HUB_DISABLE_XET,'1');
   assert(calls.some(call=>call.args[0]==='-c'));
 });
 

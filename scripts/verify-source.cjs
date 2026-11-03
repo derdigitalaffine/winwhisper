@@ -16,7 +16,8 @@ const html=fs.readFileSync(path.join(root,'desktop/index.html'),'utf8');
 const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]);assert.equal(new Set(ids).size,ids.length,'Duplicate HTML IDs');
 for(const file of ['app.js','setup.js']){
   const source=fs.readFileSync(path.join(root,'desktop',file),'utf8');
-  for(const match of source.matchAll(/\$\((['"])([^'"]+)\1\)/g))assert(ids.includes(match[2])||match[2]==='playhead',file+': missing #'+match[2]);
+  const dynamicIds=file==='setup.js'?[...source.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]):[];
+  for(const match of source.matchAll(/\$\((['"])([^'"]+)\1\)/g))assert(ids.includes(match[2])||dynamicIds.includes(match[2])||match[2]==='playhead',file+': missing #'+match[2]);
 }
 const setup=fs.readFileSync(path.join(root,'desktop/setup.js'),'utf8');
 assert(setup.includes('Windows nativ · empfohlen'),'Native Windows must be the recommended setup path');

@@ -12,7 +12,11 @@ test('Markdown and search escape transcript HTML and disallow executable links',
 });
 test('all renderer elements and runtime dialog are present before scripts',()=>{
   const html=fs.readFileSync(path.join(__dirname,'../desktop/index.html'),'utf8'),ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(ids.length,new Set(ids).size);assert(html.indexOf('id="runtimeDialog"')<html.indexOf('src="setup.js"'));
-  for(const file of ['app.js','setup.js']){const s=fs.readFileSync(path.join(__dirname,'../desktop',file),'utf8');for(const m of s.matchAll(/\$\((['"])([^'"]+)\1\)/g))assert(ids.includes(m[2])||m[2]==='playhead',file+' '+m[2]);}
+  for(const file of ['app.js','setup.js']){
+    const s=fs.readFileSync(path.join(__dirname,'../desktop',file),'utf8');
+    const dynamicIds=file==='setup.js'?[...s.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]):[];
+    for(const m of s.matchAll(/\$\((['"])([^'"]+)\1\)/g))assert(ids.includes(m[2])||dynamicIds.includes(m[2])||m[2]==='playhead',file+' '+m[2]);
+  }
 });
 test('first launch opens setup even when the initial event was already delivered',async()=>{
   const elements=new Map();

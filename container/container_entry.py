@@ -35,7 +35,7 @@ def main():
                 time.sleep(0.2)
         else:
             raise RuntimeError("Lokales Ollama antwortet nicht.")
-        from whisperx_studio.windows_service import WindowsService, serve
+        from whisperx_studio.managed_windows_service import WindowsService, serve
 
         service = WindowsService()
         serve(service)
