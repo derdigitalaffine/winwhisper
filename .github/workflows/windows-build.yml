@@ -14,6 +14,12 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Compile native Python sources
+        shell: pwsh
+        run: python -m compileall -q container tests/test_windows_service.py
       - name: Test and build Windows installer
         shell: pwsh
         run: ./scripts/Build-Windows.ps1
