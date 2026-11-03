@@ -60,8 +60,8 @@ jobs:
           $env:PYTHONPATH = Join-Path $PWD 'container'
           New-Item -ItemType Directory -Force -Path $env:WINWHISPER_DATA | Out-Null
           '{"id":1,"action":"shutdown","data":{}}' | .\.native-smoke\Scripts\python.exe container\native_entry.py
-          .\.native-smoke\Scripts\python.exe -c "import imageio_ffmpeg, subprocess; exe=imageio_ffmpeg.get_ffmpeg_exe(); subprocess.run([exe,'-version'],check=True,stdout=subprocess.DEVNULL); import torch,ctranslate2,faster_whisper,whisperx; from pyannote.audio import Pipeline; import whisperx.diarize; print('native imports ok')"
-          .\.native-smoke\Scripts\python.exe -c "import wave,tempfile,pathlib; p=pathlib.Path(tempfile.gettempdir())/'winwhisper-torchcodec.wav'; w=wave.open(str(p),'wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b'\0\0'*1600); w.close(); from torchcodec.decoders import AudioDecoder; d=AudioDecoder(str(p)); print('torchcodec audio decoder ok')"
+          .\.native-smoke\Scripts\python.exe -c "import native_entry; native_entry._prepare_torchcodec_dlls(strict=True); import imageio_ffmpeg, subprocess; exe=imageio_ffmpeg.get_ffmpeg_exe(); subprocess.run([exe,'-version'],check=True,stdout=subprocess.DEVNULL); import torch,ctranslate2,faster_whisper,whisperx; from pyannote.audio import Pipeline; import whisperx.diarize; print('native imports ok')"
+          .\.native-smoke\Scripts\python.exe -c "import native_entry; native_entry._prepare_torchcodec_dlls(strict=True); import wave,tempfile,pathlib; p=pathlib.Path(tempfile.gettempdir())/'winwhisper-torchcodec.wav'; w=wave.open(str(p),'wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b'\0\0'*1600); w.close(); from torchcodec.decoders import AudioDecoder; d=AudioDecoder(str(p)); print('torchcodec audio decoder ok')"
       - name: Run Windows service tests with native dependencies
         shell: pwsh
         run: |
