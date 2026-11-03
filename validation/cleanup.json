@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-03",
+  "stopped_at_user_request": true,
+  "additional_tests_started": false,
+  "repository": "https://github.com/derdigitalaffine/winwhisper",
+  "source_import_commit": "5c5e97d7c7090378ed54e2076f6d14f659f30f76",
+  "docker_build_cache_reclaimed_reported": "29.25 GB",
+  "docker_images_remaining": 0,
+  "docker_containers_remaining": 0,
+  "docker_build_cache_remaining": 0,
+  "removed": [
+    "Project node_modules",
+    "Unpacked installer and intermediate NSIS archives",
+    "Outdated source ZIP",
+    "Downloaded Electron binaries and builder tools",
+    "Both Wine test prefixes and generated shortcuts",
+    "Downloaded Buildx plugin",
+    "New npm download content from this build session",
+    "Empty Electron QA profile"
+  ],
+  "preserved": [
+    "Project sources and documentation",
+    "Preliminary Windows Setup.exe and SHA-256 file",
+    "Existing Linux WhisperX application",
+    "Existing user recordings, transcripts and models"
+  ]
+}

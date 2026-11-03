@@ -32,5 +32,6 @@ Die Abnahme auf echter Windows-Hardware bleibt offen; siehe `docs/Windows-Abnahm
 Der vorbereitete Container-Integrationstest wurde nicht ausgeführt.
 
 Die ursprüngliche Linux-App sowie vorhandene Aufnahmen und KI-Modelle wurden nicht verändert.
-Große Build-/Testdownloads und temporäre Umgebungen werden nach der GitHub-Übernahme entfernt.
+Große Build-/Testdownloads und temporäre Umgebungen wurden nach der GitHub-Übernahme entfernt.
+Docker meldete dafür 29,25 GB gelöschten Build-Cache. Das lokale Vorab-Setup samt Prüfsumme bleibt erhalten.
 Zugangstokens, Audiodateien und Modellgewichte werden nicht veröffentlicht.
