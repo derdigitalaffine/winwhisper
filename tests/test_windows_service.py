@@ -3,6 +3,7 @@
 import copy
 import json
 import io
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -60,6 +61,24 @@ class WindowsServiceTests(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(), original)
         self.assertFalse(self.service.state()["recording"])
 
+    def test_portable_data_recording_path_maps_to_windows_workspace(self):
+        self.service.command(
+            "external_record_start",
+            {"path": "/data/recordings/Windows Aufnahme ü.wav"},
+        )
+        self.assertEqual(self.service.record_path, self.source.resolve())
+        self.service.command("shutdown", {})
+
+    def test_portable_data_path_rejects_traversal(self):
+        with self.assertRaises(ValueError):
+            self.service.command(
+                "external_record_start", {"path": "/data/recordings/../secret.wav"}
+            )
+
+    def test_native_platform_marker_is_reported_from_environment(self):
+        with patch.dict(os.environ, {"WINWHISPER_PLATFORM": "windows-native"}):
+            self.assertEqual(self.service.state()["platform"], "windows-native")
+
     def test_external_recording_refuses_paths_outside_recordings(self):
         outside = self.root / "elsewhere.wav"
         outside.write_bytes(self.source.read_bytes())
@@ -93,13 +112,21 @@ class WindowsServiceTests(unittest.TestCase):
             self.assertEqual(self.service.settings, before)
 
     def test_only_two_explicit_local_models_can_be_downloaded(self):
-        with patch.object(self.service, "start_job") as job:
+        with (
+            patch.object(self.service, "start_job") as job,
+            patch("whisperx_studio.windows_service.find_ollama", return_value="ollama"),
+        ):
             for model in ["remote:cloud", "gemma4:e2b; shell", "arbitrary-model"]:
                 with self.assertRaises(ValueError):
                     self.service.command("model_pull", {"model": model})
             job.assert_not_called()
             self.service.command("model_pull", {"model": "gemma4:e2b"})
             self.assertEqual(job.call_count, 1)
+
+    def test_model_download_requires_optional_ollama(self):
+        with patch("whisperx_studio.windows_service.find_ollama", return_value=None):
+            with self.assertRaisesRegex(ValueError, "Ollama ist nicht installiert"):
+                self.service.command("model_pull", {"model": "gemma4:e2b"})
 
     def test_malformed_desktop_requests_do_not_crash_private_service(self):
         stream = io.StringIO(
@@ -130,28 +157,35 @@ class WindowsServiceTests(unittest.TestCase):
         self.assertIsNone(self.service.project)
         self.assertTrue(self.service.status.startswith("Fehler:"))
 
-    def test_llm_vram_is_released_before_whisper_loads(self):
-        order = []
+    def test_ollama_failure_does_not_block_transcription(self):
+        calls = []
 
         class Client:
             def request(self, endpoint):
                 self_test.assertEqual(endpoint, "/api/ps")
-                return {"models": [{"name": "gemma4:e2b"}]}
-
-            def unload(self, model):
-                order.append("unload:" + model)
+                raise RuntimeError("not running")
 
         self_test = self
         with (
             patch("whisperx_studio.windows_service.OllamaClient", Client),
-            patch.object(
-                base.DesktopService,
-                "transcribe_work",
-                side_effect=lambda _: order.append("whisper"),
-            ),
+            patch.object(self.service, "require_project", side_effect=lambda: calls.append("project")),
+            patch.object(self.service, "push"),
+            patch.object(self.service, "run_process", side_effect=lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("stop-after-ollama-check"))),
         ):
-            self.service.transcribe_work(threading.Event())
-        self.assertEqual(order, ["unload:gemma4:e2b", "whisper"])
+            self.service.project = {
+                "directory": str(self.root / "projects/p"),
+                "segments": [],
+            }
+            class Doc:
+                def render(self, target, cancel=None):
+                    Path(target).parent.mkdir(parents=True, exist_ok=True)
+                    Path(target).write_bytes(b"")
+                    return Path(target)
+            self.service.doc = Doc()
+            with self.assertRaisesRegex(RuntimeError, "stop-after-ollama-check"):
+                self.service.transcribe_work(threading.Event())
+        self.assertEqual(calls, ["project"])
+        self.assertTrue(any("Ollama ist nicht aktiv" in text for text in self.service.logs))
 
 
 if __name__ == "__main__":

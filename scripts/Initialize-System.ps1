@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([ValidateSet('wsl','docker','start-docker')][string]$Action)
+param([ValidateSet('wsl','docker','start-docker','ollama')][string]$Action)
 $ErrorActionPreference = 'Stop'
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'Windows x64 wird benötigt.' }
 switch ($Action) {
@@ -32,5 +32,11 @@ switch ($Action) {
     if (-not $exe) { throw 'Docker Desktop wurde nicht gefunden. Bitte zuerst installieren.' }
     Start-Process -FilePath $exe
     Write-Output 'Docker Desktop startet. Anschließend in WinWhisper auf Prüfen klicken.'
+  }
+  'ollama' {
+    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) { throw 'Windows App Installer / winget fehlt. Ollama kann alternativ direkt von ollama.com für den aktuellen Benutzer installiert werden.' }
+    & winget.exe install --id Ollama.Ollama --exact --source winget --scope user --silent --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -notin @(0,3010,-1978335189)) { throw "Ollama-Installation fehlgeschlagen: $LASTEXITCODE" }
+    Write-Output 'Ollama wurde für den aktuellen Windows-Benutzer installiert. WinWhisper startet für Auswertungen einen lokalen Ollama-Dienst.'
   }
 }

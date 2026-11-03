@@ -3,7 +3,7 @@ const fs=require('node:fs');
 const fsp=fs.promises;
 const path=require('node:path');
 const {randomUUID}=require('node:crypto');
-const {pathToFileURL}=require('node:url');
+const {pathToFileURL,fileURLToPath}=require('node:url');
 
 class WorkspaceFiles {
   constructor(root){this.root=path.resolve(root);this.protected=new Set();this.originsFile=path.join(this.root,'origins.json');
@@ -21,12 +21,19 @@ class WorkspaceFiles {
     if(!relative||relative.startsWith('..'+path.sep)||relative==='..'||path.isAbsolute(relative))throw new Error('Datei liegt außerhalb des Arbeitsbereichs.');
     return '/data/'+relative.split(path.sep).join('/');
   }
-  audioURL(logicalURL){
-    const url=new URL(logicalURL);
+  resolveAudioURL(value){
+    const url=new URL(value);
     if(url.protocol!=='file:'||url.hostname)throw new Error('Ungültige Audioadresse.');
-    return pathToFileURL(this.host(decodeURIComponent(url.pathname))).href;
+    const pathname=decodeURIComponent(url.pathname);
+    if(pathname.startsWith('/data/')){
+      const host=this.host(pathname);return {host,logical:pathname};
+    }
+    const host=fileURLToPath(url);
+    const logical=this.logical(host); // validates that native file URLs stay in the workspace
+    return {host,logical};
   }
-  streamURL(logicalURL){this.audioURL(logicalURL);return 'winwhisper://audio'+new URL(logicalURL).pathname;}
+  audioURL(value){return pathToFileURL(this.resolveAudioURL(value).host).href;}
+  streamURL(value){const {logical}=this.resolveAudioURL(value);return 'winwhisper://audio'+logical;}
   async import(file){
     const stat=await fsp.stat(file);if(!stat.isFile())throw new Error('Bitte eine Datei wählen.');
     // Avoid duplicate huge copies when reopening an internal recording/project.

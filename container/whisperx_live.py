@@ -1,15 +1,15 @@
-"""Incremental GPU transcription of a WAV while pw-record is still writing it.
+"""Incremental transcription of a WAV while the Windows recorder is writing it.
 
-Uses the same faster-whisper engine and cached small model as WhisperX. A separate
-process keeps inference away from Tk's event loop and releases VRAM on exit.
+Uses the same faster-whisper engine and cached small model as WhisperX. The live
+worker uses CUDA only when both PyTorch and CTranslate2 can actually access it;
+otherwise it falls back to CPU instead of failing the recording.
 """
 import argparse
 import json
-import os
+from pathlib import Path
 import struct
 import sys
 import time
-from pathlib import Path
 
 import numpy as np
 from faster_whisper import WhisperModel
@@ -45,9 +45,10 @@ def main():
     parser.add_argument("--language", default="de")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    # Cached by the normal WhisperX installation; no new model download needed.
+    import ctranslate2
     import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    device = "cuda" if torch.cuda.is_available() and ctranslate2.get_cuda_device_count() > 0 else "cpu"
     model = WhisperModel("small", device=device, compute_type="int8", cpu_threads=4, local_files_only=True)
     emit("ready", message=f"Live-Modell auf {device} bereit.")
     rate, stride, context = 16000, 4 * 16000, 2 * 16000
@@ -90,8 +91,8 @@ def main():
                 text = "".join(w["word"] for w in words).strip()
                 item = {"start": words[0]["start"], "end": words[-1]["end"], "text": text, "words": words}
                 transcript.append(item)
-                (args.output / "live.txt").write_text("\n".join(s["text"] for s in transcript) + "\n")
-                (args.output / "live.json").write_text(json.dumps({"language": selected_language, "segments": transcript, "preliminary": True}, ensure_ascii=False, indent=2))
+                (args.output / "live.txt").write_text("\n".join(s["text"] for s in transcript) + "\n", encoding="utf-8")
+                (args.output / "live.json").write_text(json.dumps({"language": selected_language, "segments": transcript, "preliminary": True}, ensure_ascii=False, indent=2), encoding="utf-8")
                 emit("partial", **item)
 
     while True:
@@ -105,14 +106,13 @@ def main():
             if final:
                 break
         elif stopping:
-            # Revisit the final context to commit words held back at the boundary.
             process(total, True)
             break
         else:
             time.sleep(.15)
     if not transcript:
-        (args.output / "live.txt").write_text("")
-        (args.output / "live.json").write_text(json.dumps({"language": selected_language, "segments": [], "preliminary": True}))
+        (args.output / "live.txt").write_text("", encoding="utf-8")
+        (args.output / "live.json").write_text(json.dumps({"language": selected_language, "segments": [], "preliminary": True}), encoding="utf-8")
     emit("finished", output_dir=str(args.output), text="\n".join(s["text"] for s in transcript))
 
 

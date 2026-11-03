@@ -16,13 +16,15 @@ test('all renderer elements and runtime dialog are present before scripts',()=>{
 });
 test('first launch opens setup even when the initial event was already delivered',async()=>{
   const elements=new Map();
-  const get=id=>{if(!elements.has(id))elements.set(id,{textContent:'',open:false,addEventListener(){},showModal(){this.open=true;},querySelectorAll(){return [];}});return elements.get(id);};
-  const status={ready:false,docker:true,linux:true,image:false,workspace:'/tmp/qa'};
-  const context={window:{studio:{setup:async()=>status,onEvent(){}},StudioActions:{flushEditor:async()=>true}},document:{getElementById:get,addEventListener(){}}};
+  const get=id=>{if(!elements.has(id))elements.set(id,{textContent:'',innerHTML:'',value:'',disabled:false,hidden:false,open:false,addEventListener(){},showModal(){this.open=true;},querySelectorAll(){return [];}});return elements.get(id);};
+  const setupBody={innerHTML:'',querySelector:selector=>get(selector)};
+  const status={ready:false,mode:'native',runtimeLabel:'Windows nativ',native:true,engine:false,ollama:false,workspace:'/tmp/qa'};
+  const context={window:{studio:{setup:async()=>status,onEvent(){}},StudioActions:{flushEditor:async()=>true}},document:{getElementById:get,querySelector:selector=>selector==='#runtimeDialog .setup-body'?setupBody:null,addEventListener(){}}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../desktop/setup.js'),'utf8'),context);
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(get('runtimeDialog').open,true);
   assert.equal(get('setupWorkspace').textContent,'/tmp/qa');
+  assert.equal(get('setupRuntime').value,'native');
 });
 test('delayed editor saves serialize and preserve newer or failed drafts',async()=>{
   const source=fs.readFileSync(path.join(__dirname,'../desktop/app.js'),'utf8'),fields=new Map(),saves=[];

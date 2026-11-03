@@ -1,4 +1,4 @@
-"""Container entry for batch transcription, live text and speaker setup."""
+"""Container/native entry for batch transcription, live text and speaker setup."""
 
 import os
 from pathlib import Path
@@ -7,6 +7,12 @@ import sys
 
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
+if os.name == "nt" and os.environ.get("WINWHISPER_DATA"):
+    from native_entry import _prepare_torchcodec_dlls
+
+    # Batch WhisperX imports pyannote even when diarization is disabled. Prepare
+    # the process-local DLL search path; only explicit speaker setup requires it.
+    _prepare_torchcodec_dlls(strict="--setup-speakers" in sys.argv)
 if "--live" in sys.argv:
     sys.argv.remove("--live")
     runpy.run_path(
@@ -14,10 +20,12 @@ if "--live" in sys.argv:
     )
     raise SystemExit(0)
 if "--studio-auto-device" in sys.argv:
+    import ctranslate2
     import torch
 
     sys.argv.remove("--studio-auto-device")
-    sys.argv += ["--device", "cuda" if torch.cuda.is_available() else "cpu"]
+    cuda = torch.cuda.is_available() and ctranslate2.get_cuda_device_count() > 0
+    sys.argv += ["--device", "cuda" if cuda else "cpu"]
 if "--setup-speakers" in sys.argv:
     import torch
     from huggingface_hub import get_token

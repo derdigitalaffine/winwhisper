@@ -2,6 +2,7 @@ name: Windows installer
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,7 +14,13 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - name: Build Windows installer
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Compile native Python sources
+        shell: pwsh
+        run: python -m compileall -q container tests/test_windows_service.py tests/test_native_engine.py
+      - name: Test and build Windows installer
         shell: pwsh
         run: ./scripts/Build-Windows.ps1
       - uses: actions/upload-artifact@v7
@@ -23,3 +30,45 @@ jobs:
             dist/*Setup*.exe
             dist/*.sha256
           if-no-files-found: error
+
+  native-engine-smoke:
+    if: github.event_name != 'push'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: container/requirements-windows-py312.txt
+      - name: Create isolated native runtime
+        shell: pwsh
+        run: |
+          python -m venv .native-smoke
+          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check --upgrade pip
+          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check --index-url https://download.pytorch.org/whl/cpu torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
+          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check -r container\requirements-windows-py312.txt
+      - name: Exercise native entry and AI bridge
+        shell: pwsh
+        run: |
+          $env:WINWHISPER_DATA = Join-Path $PWD '.native-smoke-data'
+          $env:WINWHISPER_ENGINE = Join-Path $PWD 'container'
+          $env:WINWHISPER_CLI = Join-Path $PWD 'container\whisperx_cli.py'
+          $env:WINWHISPER_PLATFORM = 'windows-native'
+          $env:WINWHISPER_OLLAMA = ''
+          $env:PYTHONPATH = Join-Path $PWD 'container'
+          New-Item -ItemType Directory -Force -Path $env:WINWHISPER_DATA | Out-Null
+          '{"id":1,"action":"shutdown","data":{}}' | .\.native-smoke\Scripts\python.exe container\native_entry.py
+          .\.native-smoke\Scripts\python.exe tests\test_native_engine.py
+      - name: Run Windows service tests with native dependencies
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = Join-Path $PWD 'container'
+          $bin = Join-Path $PWD '.native-smoke-bin'
+          New-Item -ItemType Directory -Force -Path $bin | Out-Null
+          $source = .\.native-smoke\Scripts\python.exe -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
+          Copy-Item -LiteralPath $source.Trim() -Destination (Join-Path $bin 'ffmpeg.exe') -Force
+          $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+          & (Join-Path $bin 'ffmpeg.exe') -version | Select-Object -First 1
+          .\.native-smoke\Scripts\python.exe tests\test_windows_service.py
