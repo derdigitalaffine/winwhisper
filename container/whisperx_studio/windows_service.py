@@ -48,6 +48,28 @@ def find_ollama():
     return None
 
 
+def workspace_path(value):
+    """Resolve the desktop's portable /data path into the active workspace.
+
+    The Electron file boundary deliberately keeps using /data/... logical paths so
+    the same renderer and export code works with Docker and native Windows. Native
+    Python receives those logical paths and maps them to its real Windows workspace.
+    Direct host paths are accepted only when they are already inside that workspace.
+    """
+    root = core.DATA.resolve()
+    text = str(value or "")
+    if text.startswith("/data/"):
+        parts = text[6:].split("/")
+        if not parts or any(not part or part in (".", "..") or ":" in part or "\\" in part for part in parts):
+            raise ValueError("Ungültiger Arbeitsbereichspfad.")
+        resolved = root.joinpath(*parts).resolve()
+    else:
+        resolved = Path(text).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError("Diese Datei liegt außerhalb des lokalen Arbeitsbereichs.")
+    return resolved
+
+
 class FinalizedRecorder:
     # The Windows writer closes the WAV before asking the engine to import it.
     def poll(self):
@@ -55,6 +77,17 @@ class FinalizedRecorder:
 
 
 class WindowsService(base.DesktopService):
+    PATH_ACTIONS = {
+        "external_record_start",
+        "load_audio",
+        "open_project",
+        "import_transcript",
+        "save_as",
+        "export_audio",
+        "export_report",
+        "export_transcript",
+    }
+
     @staticmethod
     def cli_command(*args):
         if base.CLI.suffix.lower() == ".py":
@@ -268,6 +301,9 @@ class WindowsService(base.DesktopService):
         self.status = f"Transkript fertig · {len(self.project['segments'])} Abschnitte."
 
     def command(self, action, data):
+        if action in self.PATH_ACTIONS and isinstance(data, dict) and "path" in data:
+            data = dict(data)
+            data["path"] = str(workspace_path(data["path"]))
         if action == "open_project":
             self.unlocked()
             self.save()
