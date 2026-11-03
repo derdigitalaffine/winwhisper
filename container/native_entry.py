@@ -54,7 +54,10 @@ def _download_torchcodec_ffmpeg(target: Path):
         if digest.hexdigest().lower() != TORCHCODEC_FFMPEG_SHA256:
             raise RuntimeError("FFmpeg-Download hat eine unerwartete SHA-256-Prüfsumme.")
         staging.mkdir(parents=True, exist_ok=True)
-        with tarfile.open(archive, "r:gz") as bundle:
+        # TorchCodec's published Windows artifact currently carries a .tar.gz
+        # name while the verified bytes may be an uncompressed tar. Let Python
+        # detect the actual archive format instead of trusting the extension.
+        with tarfile.open(archive, "r:*") as bundle:
             members = bundle.getmembers()
             root = staging.resolve()
             for member in members:
