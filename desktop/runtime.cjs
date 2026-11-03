@@ -61,7 +61,7 @@ class NativeWindowsRuntime extends EventEmitter{
       WINWHISPER_CLI:path.join(this.enginePath,'whisperx_cli.py'),WINWHISPER_PLATFORM:'windows-native',
       WINWHISPER_OLLAMA:ollama||'',WINWHISPER_OLLAMA_URL:'http://127.0.0.1:11435',
       OLLAMA_HOST:'127.0.0.1:11435',OLLAMA_MODELS:path.join(this.workspace,'models','ollama'),OLLAMA_NO_CLOUD:'1',OLLAMA_KEEP_ALIVE:'30s',OLLAMA_MAX_LOADED_MODELS:'1',
-      HF_HOME:path.join(this.workspace,'models','huggingface'),TORCH_HOME:path.join(this.workspace,'models','torch'),HF_HUB_DISABLE_TELEMETRY:'1',PYANNOTE_METRICS_ENABLED:'0',DO_NOT_TRACK:'1',
+      HF_HOME:path.join(this.workspace,'models','huggingface'),TORCH_HOME:path.join(this.workspace,'models','torch'),HF_HUB_DISABLE_TELEMETRY:'1',HF_HUB_DISABLE_SYMLINKS:'1',HF_HUB_DISABLE_SYMLINKS_WARNING:'1',HF_HUB_DISABLE_XET:'1',PYANNOTE_METRICS_ENABLED:'0',DO_NOT_TRACK:'1',
       PATH:additions.filter(Boolean).join(path.delimiter)+path.delimiter+(process.env.PATH||'')};
   }
   findOllama(){
