@@ -2,9 +2,9 @@
   "name": "winwhisper-studio",
   "productName": "WinWhisper Studio",
   "version": "1.0.0",
-  "description": "Lokaler Windows-Audioeditor mit WhisperX, Gemma und Qwen",
-  "author": "WinWhisper Studio",
-  "license": "UNLICENSED",
+  "description": "Von Verwaltungen für Verwaltungen: lokale Audio-Transkription und Protokolle",
+  "author": "Dominik Tröster, Verbandsgemeinde Otterbach-Otterberg",
+  "license": "MIT",
   "private": true,
   "main": "desktop/main.cjs",
   "scripts": {
@@ -51,6 +51,10 @@
       {
         "from": "README.md",
         "to": "README.md"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
       }
     ],
     "win": {

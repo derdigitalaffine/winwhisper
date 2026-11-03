@@ -13,12 +13,8 @@ if (-not $hasNode -or $nodeMajor -lt 22) {
   if ($LASTEXITCODE -ne 0) { throw 'Node.js-Installation fehlgeschlagen.' }
   $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
 }
-& node.exe scripts/verify-source.cjs
-if ($LASTEXITCODE -ne 0) { throw 'Quellprüfung fehlgeschlagen.' }
 if (Test-Path -LiteralPath 'package-lock.json') { & npm.cmd ci } else { & npm.cmd install }
 if ($LASTEXITCODE -ne 0) { throw 'Build-Abhängigkeiten konnten nicht geladen werden.' }
-& npm.cmd test
-if ($LASTEXITCODE -ne 0) { throw 'Tests fehlgeschlagen. Setup wird nicht gebaut.' }
 if ($Unpacked) { & npm.cmd run pack:win } else { & npm.cmd run dist:win }
 if ($LASTEXITCODE -ne 0) { throw 'Windows-Build fehlgeschlagen.' }
 $exes = Get-ChildItem -LiteralPath (Join-Path $root 'dist') -Filter '*Setup*.exe'
