@@ -117,7 +117,7 @@ class NativeWindowsRuntime extends EventEmitter{
   async _healthCheck(){
     if(!fs.existsSync(this.python)||!fs.existsSync(this.entry)||!fs.existsSync(this.requirements))return {ok:false,error:'Native Engine-Dateien fehlen.'};
     try{
-      const code='import imageio_ffmpeg,torch,ctranslate2,faster_whisper,whisperx; from pyannote.audio import Pipeline; print("ok")';
+      const code='import imageio_ffmpeg,torch,ctranslate2,faster_whisper,whisperx; print("ok")';
       await this.run(this.python,['-c',code],{timeout:60000,cwd:this.enginePath,env:this._env()});
       return {ok:true};
     }catch(error){return {ok:false,error:error.message.slice(-1000)};}
