@@ -7,6 +7,12 @@ import sys
 
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
+if os.name == "nt" and os.environ.get("WINWHISPER_DATA"):
+    from native_entry import _prepare_torchcodec_dlls
+
+    # Batch WhisperX imports pyannote even when diarization is disabled. Prepare
+    # the process-local DLL search path; only explicit speaker setup requires it.
+    _prepare_torchcodec_dlls(strict="--setup-speakers" in sys.argv)
 if "--live" in sys.argv:
     sys.argv.remove("--live")
     runpy.run_path(
