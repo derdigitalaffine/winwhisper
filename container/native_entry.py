@@ -10,10 +10,47 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
+import site
 import subprocess
 import sys
 import time
 import urllib.request
+
+
+def _prepare_torchcodec_dlls():
+    """Make PyAV's bundled shared FFmpeg libraries visible to TorchCodec.
+
+    Python 3.8+ tightened DLL lookup on Windows. PyAV's wheel already ships the
+    FFmpeg shared DLLs, so copy them next to TorchCodec's extension DLLs instead
+    of requiring a machine-wide FFmpeg installation or administrator rights.
+    """
+    if os.name != "nt":
+        return
+    roots = [Path(p) for p in site.getsitepackages()]
+    user = site.getusersitepackages()
+    if user:
+        roots.append(Path(user))
+    for root in roots:
+        source = root / "av.libs"
+        target = root / "torchcodec"
+        if not source.is_dir() or not target.is_dir():
+            continue
+        copied = 0
+        for dll in source.glob("*.dll"):
+            destination = target / dll.name
+            if not destination.is_file() or destination.stat().st_size != dll.stat().st_size:
+                temporary = destination.with_suffix(destination.suffix + ".tmp")
+                shutil.copy2(dll, temporary)
+                os.replace(temporary, destination)
+            copied += 1
+        if copied:
+            print(f"FFmpeg-Laufzeit für TorchCodec vorbereitet ({copied} DLLs).", file=sys.stderr, flush=True)
+            return
+    print(
+        "Hinweis: Die geteilten FFmpeg-Bibliotheken für die optionale Sprechertrennung wurden nicht gefunden.",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def _prepare_ffmpeg():
@@ -85,6 +122,7 @@ def _start_ollama():
 
 
 def main():
+    _prepare_torchcodec_dlls()
     _prepare_ffmpeg()
     ollama, log = _start_ollama()
     service = None
