@@ -8,10 +8,24 @@ an explicit cache verification and a safe way to remove broken or unused models.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import shutil
+import stat
 import sys
 import traceback
+
+# WinWhisper is intentionally a non-admin Windows application. Hugging Face's
+# efficient cache normally uses symlinks, which can require Developer Mode or
+# elevated privileges on Windows. Force the copy-based cache mode before the
+# library imports its constants so model files such as vocabulary.txt never
+# depend on symlink privileges. Xet is disabled for the native helper as well so
+# the model stays in the simple repository-local cache layout that we can inspect
+# and remove safely from the setup dialog.
+if os.name == "nt":
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 from huggingface_hub import snapshot_download
 from huggingface_hub.constants import HF_HUB_CACHE
@@ -100,6 +114,28 @@ def model_statuses() -> dict:
     return {model: model_status(model) for model in MODELS}
 
 
+def _make_writable(root: Path) -> None:
+    """Best-effort removal of Windows read-only flags from a disposable cache."""
+    try:
+        entries = [root, *root.rglob("*")]
+    except OSError:
+        entries = [root]
+    for entry in entries:
+        try:
+            os.chmod(entry, stat.S_IWRITE | stat.S_IREAD)
+        except OSError:
+            pass
+
+
+def _retry_remove_readonly(function, path, _excinfo) -> None:
+    """shutil.rmtree callback for read-only files left by old Windows caches."""
+    try:
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+    except OSError:
+        pass
+    function(path)
+
+
 def remove(model: str) -> bool:
     """Remove only the allowlisted model's own Hugging Face repository cache."""
     root = cache_dir_for(model)
@@ -111,9 +147,25 @@ def remove(model: str) -> bool:
         log(f"Whisper {model}: kein lokaler Cache vorhanden.")
         return False
     log(f"Entferne Whisper {model} aus dem lokalen Modell-Cache …")
-    shutil.rmtree(root)
+    _make_writable(root)
+    shutil.rmtree(root, onexc=_retry_remove_readonly)
+    if root.exists():
+        raise PermissionError(
+            f"Der Whisper-{model}-Cache konnte nicht vollständig entfernt werden: {root}"
+        )
     log(f"Whisper {model} wurde lokal entfernt.")
     return True
+
+
+def _permission_message(model: str, exc: PermissionError) -> RuntimeError:
+    path = getattr(exc, "filename", None) or str(exc)
+    return RuntimeError(
+        "Windows verweigert den Zugriff auf eine Datei im Whisper-Cache "
+        f"({path}). Das kann bei einem älteren oder abgebrochenen Hugging-Face-Cache "
+        "mit Symlinks auftreten. In der Einrichtung das ausgewählte Whisper-Modell "
+        "entfernen und danach erneut installieren; WinWhisper verwendet anschließend "
+        "den symlink-freien Windows-Cache."
+    )
 
 
 def download(model: str) -> Path:
@@ -122,6 +174,8 @@ def download(model: str) -> Path:
     log(f"Whisper-Download · Modell: {model}")
     log(f"Quelle: https://huggingface.co/{repo_id}")
     log(f"Lokaler Modell-Cache: {HF_HUB_CACHE}")
+    if os.name == "nt":
+        log("Windows-Modus: Hugging-Face-Symlinks sind deaktiviert; keine Adminrechte erforderlich.")
     log("Prüfe zuerst, ob bereits ein vollständiges lokales Modell vorhanden ist …")
 
     try:
@@ -131,6 +185,8 @@ def download(model: str) -> Path:
             local_files_only=True,
         )
         root = verify_snapshot(cached)
+    except PermissionError as exc:
+        raise _permission_message(model, exc) from exc
     except Exception as exc:
         log(f"Noch kein vollständiger lokaler Cache: {type(exc).__name__}: {exc}")
     else:
@@ -140,16 +196,22 @@ def download(model: str) -> Path:
 
     log("Starte Download von Hugging Face. Fortschrittsmeldungen folgen direkt darunter.")
     log("Bei Proxy-, Firewall-, Virenscanner- oder Verbindungsproblemen erscheint die genaue Fehlermeldung im Protokoll.")
-    downloaded = snapshot_download(repo_id, allow_patterns=ALLOW_PATTERNS)
+    try:
+        downloaded = snapshot_download(repo_id, allow_patterns=ALLOW_PATTERNS)
+    except PermissionError as exc:
+        raise _permission_message(model, exc) from exc
 
     log("Download beendet. Prüfe die lokalen Modelldateien …")
     root = verify_snapshot(downloaded)
-    cached = snapshot_download(
-        repo_id,
-        allow_patterns=ALLOW_PATTERNS,
-        local_files_only=True,
-    )
-    verify_snapshot(cached)
+    try:
+        cached = snapshot_download(
+            repo_id,
+            allow_patterns=ALLOW_PATTERNS,
+            local_files_only=True,
+        )
+        verify_snapshot(cached)
+    except PermissionError as exc:
+        raise _permission_message(model, exc) from exc
     size_mb = (root / "model.bin").stat().st_size / (1024 * 1024)
     log(f"Whisper {model} lokal verifiziert · model.bin {size_mb:.1f} MB.")
     log(f"Bereit: {root}")
