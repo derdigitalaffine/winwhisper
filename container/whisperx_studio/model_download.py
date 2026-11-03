@@ -15,15 +15,12 @@ import stat
 import sys
 import traceback
 
-# WinWhisper is intentionally a non-admin Windows application. Hugging Face's
-# efficient cache normally uses symlinks, which can require Developer Mode or
-# elevated privileges on Windows. Force the copy-based cache mode before the
-# library imports its constants so model files such as vocabulary.txt never
-# depend on symlink privileges. Xet is disabled for the native helper as well so
-# the model stays in the simple repository-local cache layout that we can inspect
-# and remove safely from the setup dialog.
+# WhisperX 3.8.6 currently resolves huggingface-hub 0.x. On Windows that client
+# automatically falls back to copying files when symlinks are unavailable, but a
+# cache previously written by Docker/WSL can still contain Linux-style symlinks.
+# The desktop runtime therefore gives native Windows its own HF_HOME. Keep Xet
+# disabled for this helper and silence only the expected Windows symlink warning.
 if os.name == "nt":
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
@@ -62,10 +59,29 @@ def repo_id_for(model: str) -> str:
     return repo_id
 
 
-def cache_dir_for(model: str) -> Path:
-    """Return the exact Hugging Face cache directory for one allowlisted model."""
+def _repo_cache(root: Path, model: str) -> Path:
     repo_id = repo_id_for(model)
-    return Path(HF_HUB_CACHE) / ("models--" + repo_id.replace("/", "--"))
+    return root / ("models--" + repo_id.replace("/", "--"))
+
+
+def cache_dir_for(model: str) -> Path:
+    """Return the active Hugging Face repository cache for one allowlisted model."""
+    return _repo_cache(Path(HF_HUB_CACHE), model)
+
+
+def legacy_cache_dir_for(model: str) -> Path | None:
+    """Return the old shared Docker/native cache path when a workspace is known."""
+    data = os.environ.get("WINWHISPER_DATA", "").strip()
+    if not data:
+        return None
+    legacy_hub = Path(data) / "models" / "huggingface" / "hub"
+    legacy = _repo_cache(legacy_hub, model)
+    try:
+        if legacy.resolve() == cache_dir_for(model).resolve():
+            return None
+    except OSError:
+        pass
+    return legacy
 
 
 def verify_snapshot(path: str | Path) -> Path:
@@ -82,9 +98,16 @@ def verify_snapshot(path: str | Path) -> Path:
 
 
 def model_status(model: str) -> dict:
-    """Inspect the local cache without touching the network."""
+    """Inspect the active cache; legacy cache presence enables cleanup in setup."""
     root = cache_dir_for(model)
-    result = {"installed": False, "cached": root.exists(), "size_mb": 0.0}
+    legacy = legacy_cache_dir_for(model)
+    legacy_present = bool(legacy and legacy.exists())
+    result = {
+        "installed": False,
+        "cached": root.exists() or legacy_present,
+        "legacy": legacy_present,
+        "size_mb": 0.0,
+    }
     snapshots = root / "snapshots"
     if not snapshots.is_dir():
         return result
@@ -136,23 +159,33 @@ def _retry_remove_readonly(function, path, _excinfo) -> None:
     function(path)
 
 
-def remove(model: str) -> bool:
-    """Remove only the allowlisted model's own Hugging Face repository cache."""
-    root = cache_dir_for(model)
-    hub = Path(HF_HUB_CACHE).resolve()
-    resolved = root.resolve()
-    if resolved.parent != hub:
-        raise RuntimeError("Whisper-Cachepfad liegt außerhalb des Hugging-Face-Caches.")
+def _remove_cache_root(root: Path) -> bool:
     if not root.exists():
-        log(f"Whisper {model}: kein lokaler Cache vorhanden.")
         return False
-    log(f"Entferne Whisper {model} aus dem lokalen Modell-Cache …")
     _make_writable(root)
     shutil.rmtree(root, onexc=_retry_remove_readonly)
     if root.exists():
-        raise PermissionError(
-            f"Der Whisper-{model}-Cache konnte nicht vollständig entfernt werden: {root}"
-        )
+        raise PermissionError(f"Cache konnte nicht vollständig entfernt werden: {root}")
+    return True
+
+
+def remove(model: str) -> bool:
+    """Remove only allowlisted model caches from active and legacy HF locations."""
+    repo_id_for(model)
+    roots = [cache_dir_for(model)]
+    legacy = legacy_cache_dir_for(model)
+    if legacy is not None:
+        roots.append(legacy)
+
+    removed = False
+    for root in roots:
+        log(f"Prüfe Whisper-{model}-Cache: {root}")
+        if _remove_cache_root(root):
+            removed = True
+            log(f"Whisper {model}: Cache entfernt: {root}")
+    if not removed:
+        log(f"Whisper {model}: kein lokaler Cache vorhanden.")
+        return False
     log(f"Whisper {model} wurde lokal entfernt.")
     return True
 
@@ -161,10 +194,10 @@ def _permission_message(model: str, exc: PermissionError) -> RuntimeError:
     path = getattr(exc, "filename", None) or str(exc)
     return RuntimeError(
         "Windows verweigert den Zugriff auf eine Datei im Whisper-Cache "
-        f"({path}). Das kann bei einem älteren oder abgebrochenen Hugging-Face-Cache "
-        "mit Symlinks auftreten. In der Einrichtung das ausgewählte Whisper-Modell "
-        "entfernen und danach erneut installieren; WinWhisper verwendet anschließend "
-        "den symlink-freien Windows-Cache."
+        f"({path}). Das kann bei einem älteren oder abgebrochenen Cache aus "
+        "Docker/WSL auftreten. In der Einrichtung das ausgewählte Whisper-Modell "
+        "entfernen und danach erneut installieren; WinWhisper verwendet nativ "
+        "einen getrennten Windows-Cache."
     )
 
 
@@ -175,7 +208,10 @@ def download(model: str) -> Path:
     log(f"Quelle: https://huggingface.co/{repo_id}")
     log(f"Lokaler Modell-Cache: {HF_HUB_CACHE}")
     if os.name == "nt":
-        log("Windows-Modus: Hugging-Face-Symlinks sind deaktiviert; keine Adminrechte erforderlich.")
+        log("Windows-Modus: eigener nativer Hugging-Face-Cache; keine Docker/WSL-Symlinks werden wiederverwendet.")
+    legacy = legacy_cache_dir_for(model)
+    if legacy and legacy.exists():
+        log(f"Alter gemeinsamer Cache erkannt: {legacy}. Er wird nicht für die native Installation verwendet und kann über „entfernen“ gelöscht werden.")
     log("Prüfe zuerst, ob bereits ein vollständiges lokales Modell vorhanden ist …")
 
     try:
