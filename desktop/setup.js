@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const api=window.studio,$=id=>document.getElementById(id);if(!api)return;
-  let working=false,stateBusy=false,lastStatus={},activeWhisperStatus='';
+  let working=false,stateBusy=false,lastStatus={},activeWhisperStatus='',serviceState={};
 
   const body=document.querySelector('#runtimeDialog .setup-body');
   body.innerHTML=`
@@ -25,10 +25,12 @@
       <label>Verarbeitung <select id="setupDockerMode"><option value="auto">Automatisch · NVIDIA-GPU, sonst CPU</option><option value="cpu">Nur CPU</option><option value="gpu">NVIDIA-GPU erforderlich</option></select></label>
       <div class="setup-actions"><button class="btn btn-teal" data-setup="prepare">Docker-Laufzeit einrichten</button><button class="btn btn-white" data-setup="start">Vorhandene Umgebung starten</button><button class="btn btn-white" data-setup="restart">Umgebung neu starten</button></div>
     </section>
-    <h3>3 · Modelle auswählen</h3>
-    <p>Für die Transkription kannst du zwischen <strong>Whisper Tiny</strong> und <strong>Whisper Small</strong> wählen. Tiny ist deutlich kleiner und schneller geladen; Small ist die ausgewogenere Standardvariante.</p>
-    <label class="input-group"><span>Whisper-Modell</span><select id="setupAsrModel"><option value="tiny">Tiny · kleinster Download, sehr schnell</option><option value="small" selected>Small · ausgewogen, Standard</option></select></label>
-    <div class="setup-actions"><button id="setupAsr" class="btn btn-white" data-setup="asr">Ausgewähltes Whisper-Modell laden</button><button id="setupGemma" class="btn btn-white" data-setup="gemma">Gemma e2b laden</button><button id="setupQwen" class="btn btn-white" data-setup="qwen">Qwen 14B laden</button></div>
+    <h3>3 · Whisper-Modell verwalten</h3>
+    <p>Wähle das Modell, das für neue Transkriptionen verwendet werden soll. Die Auswahl wird sofort gespeichert. <strong>Tiny</strong> ist die kleinste und schnellste Variante; Small bleibt der ausgewogene Standard.</p>
+    <label class="input-group"><span>Aktives Whisper-Modell</span><select id="setupAsrModel"><option value="tiny">Tiny · kleinster Download, sehr schnell</option><option value="base">Base · klein und kompakt</option><option value="small" selected>Small · ausgewogen, Standard</option><option value="medium">Medium · genauer, größer</option><option value="large-v3">Large v3 · höchste Qualität, sehr groß</option></select></label>
+    <p id="setupAsrState" class="setup-workspace">Modellstatus wird gelesen …</p>
+    <div class="setup-actions"><button id="setupAsr" class="btn btn-teal" data-setup="asr">Ausgewähltes Whisper-Modell installieren / prüfen</button><button id="setupAsrRemove" class="btn btn-white" data-setup="asr-remove">Ausgewähltes Whisper-Modell entfernen</button><button id="setupGemma" class="btn btn-white" data-setup="gemma">Gemma e2b laden</button><button id="setupQwen" class="btn btn-white" data-setup="qwen">Qwen 14B laden</button></div>
+    <p>Auch ein abgebrochener oder unvollständiger Whisper-Download kann über „entfernen“ aus dem lokalen Cache gelöscht und danach sauber neu installiert werden.</p>
     <p>Beim Whisper-Download öffnet sich das Einrichtungsprotokoll automatisch. Dort siehst du Quelle, Cache-Prüfung, Downloadfortschritt, Verifikation und eine konkrete Fehlermeldung.</p>
     <p>Für Sprechertrennung anschließend in den Transkriptionseinstellungen „Sprechermodell einrichten“ wählen.</p>
     <details><summary>Einrichtungsprotokoll</summary><pre id="setupLog" class="activity-log"></pre></details>
@@ -41,12 +43,25 @@
   const dockerMode=document.getElementById('setupDockerMode');
   const asrModel=document.getElementById('setupAsrModel');
   const logDetails=body.querySelector('details');
+  const asrNames={tiny:'Tiny',base:'Base',small:'Small',medium:'Medium','large-v3':'Large v3'};
 
   function log(text){const box=$('setupLog');box.textContent=(box.textContent+String(text)+'\n').slice(-24000);box.scrollTop=box.scrollHeight;}
   async function show(){if(window.StudioActions&&(await window.StudioActions.flushEditor())===false)return;const dialog=$('runtimeDialog');if(!dialog.open)dialog.showModal();refresh();}
+  function currentWhisperInfo(){return (serviceState.whisper_models||{})[asrModel.value]||{};}
+  function updateWhisperUi(){
+    const saved=serviceState.settings&&serviceState.settings.asr_model;
+    if(saved&&[...asrModel.options].some(option=>option.value===saved))asrModel.value=saved;
+    const info=currentWhisperInfo(),name=asrNames[asrModel.value]||asrModel.value;
+    if(info.installed){$('setupAsrState').textContent=`Whisper ${name} · installiert${info.size_mb?` · model.bin ${info.size_mb} MB`:''} · für Transkriptionen ausgewählt`;}
+    else if(info.cached){$('setupAsrState').textContent=`Whisper ${name} · unvollständiger lokaler Cache vorhanden · entfernen und neu installieren empfohlen`;}
+    else{$('setupAsrState').textContent=`Whisper ${name} · nicht lokal installiert${saved===asrModel.value?' · ausgewählt':''}`;}
+    updateDisabled();
+  }
   function updateDisabled(){
-    const ready=!!lastStatus.ready,hasOllama=lastStatus.mode==='docker'||!!lastStatus.ollama;
+    const ready=!!lastStatus.ready,hasOllama=lastStatus.mode==='docker'||!!lastStatus.ollama,info=currentWhisperInfo();
     $('setupAsr').disabled=working||stateBusy||!ready;
+    $('setupAsrRemove').disabled=working||stateBusy||!ready||!info.cached;
+    asrModel.disabled=working||stateBusy||!ready;
     $('setupGemma').disabled=working||stateBusy||!ready||!hasOllama;
     $('setupQwen').disabled=working||stateBusy||!ready||!hasOllama;
   }
@@ -60,19 +75,28 @@
     $('setupDevice').textContent=status.gpu?'Verarbeitung · NVIDIA-GPU':'Verarbeitung · CPU / noch ungeprüft';
     ollamaStatus.textContent=mode==='docker'?(status.ollama?'Ollama · im Container':'Ollama · noch nicht bereit'):(status.ollama?'Ollama · installiert':'Ollama · optional, nicht installiert');
     $('setupWorkspace').textContent=status.workspace||'';
-    updateDisabled();
+    updateWhisperUi();
   }
   async function refresh(){try{display(await api.setup('status'));}catch(e){log(e.message);}}
   async function task(button,work){
     if(working)return;working=true;
-    const buttons=[...$('runtimeDialog').querySelectorAll('[data-setup]')];buttons.forEach(b=>b.disabled=true);runtimeSelect.disabled=true;
+    const buttons=[...$('runtimeDialog').querySelectorAll('[data-setup]')];buttons.forEach(b=>b.disabled=true);runtimeSelect.disabled=true;asrModel.disabled=true;
     const before=button?.textContent;if(button)button.textContent='Bitte warten …';
     try{await work();}catch(e){log('Fehler: '+e.message);$('setupSummary').textContent=e.message;}
-    finally{working=false;buttons.forEach(b=>b.disabled=false);runtimeSelect.disabled=false;if(button)button.textContent=before;await refresh();updateDisabled();}
+    finally{working=false;buttons.forEach(b=>b.disabled=false);runtimeSelect.disabled=false;if(button)button.textContent=before;await refresh();updateWhisperUi();}
   }
   runtimeSelect.addEventListener('change',()=>{
     const selected=runtimeSelect.value;
     task(null,async()=>{display(await api.setup('select',{mode:selected}));log(selected==='native'?'Windows nativ ausgewählt. Docker und WSL werden hierfür nicht benötigt.':'Docker / WSL 2 als Kompatibilitätsmodus ausgewählt.');});
+  });
+  asrModel.addEventListener('change',()=>{
+    const model=asrModel.value;
+    task(null,async()=>{
+      await api.command('settings',{asr_model:model});
+      serviceState.settings={...(serviceState.settings||{}),asr_model:model};
+      log(`Whisper ${asrNames[model]||model} als aktives Transkriptionsmodell ausgewählt.`);
+      updateWhisperUi();
+    });
   });
   document.addEventListener('click',event=>{
     const open=event.target.closest('[data-open-setup]');if(open){show();return;}
@@ -99,9 +123,16 @@
         logDetails.open=true;
         log(`Whisper-${model}-Download wird gestartet. Der Cache wird zuerst geprüft; danach folgen Download und lokale Verifikation.`);
         await api.command('settings',{asr_model:model});
-        log(`Whisper-${model} ist jetzt als Transkriptionsmodell ausgewählt.`);
+        serviceState.settings={...(serviceState.settings||{}),asr_model:model};
+        log(`Whisper-${model} ist als Transkriptionsmodell ausgewählt.`);
         await api.command('warmup_asr',{model});
         log(`Whisper-${model} läuft im Hintergrund. Alle Fortschritts- und Fehlermeldungen erscheinen hier.`);
+      }else if(action==='asr-remove'){
+        const model=asrModel.value,name=asrNames[model]||model;
+        if(!window.confirm(`Whisper ${name} wirklich vom lokalen Rechner entfernen? Das Modell kann später erneut installiert werden.`))return;
+        logDetails.open=true;
+        log(`Whisper-${model} wird aus dem lokalen Modell-Cache entfernt.`);
+        await api.command('remove_asr',{model});
       }
     });
   });
@@ -113,16 +144,18 @@
     else if(event.type==='log'&&$('runtimeDialog').open)log(event.data);
     else if(event.type==='error'&&$('runtimeDialog').open){log('Fehler: '+event.data);$('setupSummary').textContent='Fehler: '+event.data;logDetails.open=true;}
     else if(event.type==='state'){
-      stateBusy=!!(event.data.busy||event.data.recording);
-      if(event.data.busy&&event.data.operation==='Whisper-Modell herunterladen'){
-        activeWhisperStatus=event.data.status||'Whisper-Modell wird heruntergeladen …';
+      serviceState=event.data||{};
+      stateBusy=!!(serviceState.busy||serviceState.recording);
+      updateWhisperUi();
+      if(serviceState.busy&&['Whisper-Modell herunterladen','Whisper-Modell entfernen'].includes(serviceState.operation)){
+        activeWhisperStatus=serviceState.status||(serviceState.operation==='Whisper-Modell entfernen'?'Whisper-Modell wird entfernt …':'Whisper-Modell wird heruntergeladen …');
         $('setupSummary').textContent=activeWhisperStatus;
         logDetails.open=true;
-      }else if(!event.data.busy){
+      }else if(!serviceState.busy){
         activeWhisperStatus='';
-        if(event.data.status&&(/Whisper .*lokal bereit/.test(event.data.status)||event.data.status.startsWith('Fehler:'))){
-          $('setupSummary').textContent=event.data.status;
-          if(event.data.status.startsWith('Fehler:'))logDetails.open=true;
+        if(serviceState.status&&(/Whisper .*lokal bereit/.test(serviceState.status)||/Whisper .*lokal entfernt/.test(serviceState.status)||/Whisper .*nicht lokal installiert/.test(serviceState.status)||serviceState.status.startsWith('Fehler:'))){
+          $('setupSummary').textContent=serviceState.status;
+          if(serviceState.status.startsWith('Fehler:'))logDetails.open=true;
         }
       }
       updateDisabled();
