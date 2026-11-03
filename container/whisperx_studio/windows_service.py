@@ -1,10 +1,16 @@
-"""Adapt the proven project/analysis engine to Windows-hosted PCM recording."""
+"""Adapt the project/analysis engine to Windows-hosted PCM recording.
+
+The service is shared by the Docker runtime and the native Windows runtime. Paths,
+Ollama and the WhisperX launcher are selected through environment variables when
+running natively; Docker keeps its existing defaults.
+"""
 
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 
 from . import core
@@ -14,9 +20,30 @@ from . import desktop_service as base
 
 base.DATA = core.DATA
 base.PYTHON = Path(sys.executable)
-base.CLI = Path("/app/whisperx-cli")
-base.ROOT = Path(__file__).resolve().parents[1]
-from .analysis import OllamaClient
+base.ROOT = Path(os.environ.get("WINWHISPER_ENGINE", str(Path(__file__).resolve().parents[1])))
+base.CLI = Path(os.environ.get("WINWHISPER_CLI", "/app/whisperx-cli"))
+from . import analysis
+
+analysis.OLLAMA = os.environ.get("WINWHISPER_OLLAMA_URL", analysis.OLLAMA)
+OllamaClient = analysis.OllamaClient
+
+
+def find_ollama():
+    configured = os.environ.get("WINWHISPER_OLLAMA", "").strip()
+    if configured and Path(configured).is_file():
+        return configured
+    command = shutil.which("ollama")
+    if command:
+        return command
+    if os.name == "nt":
+        local = Path(os.environ.get("LOCALAPPDATA", ""))
+        for candidate in (
+            local / "Programs" / "Ollama" / "ollama.exe",
+            local / "Ollama" / "ollama.exe",
+        ):
+            if candidate.is_file():
+                return str(candidate)
+    return None
 
 
 class FinalizedRecorder:
@@ -42,7 +69,7 @@ class WindowsService(base.DesktopService):
 
     def _state(self):
         state = super()._state()
-        state["platform"] = "windows-container"
+        state["platform"] = os.environ.get("WINWHISPER_PLATFORM", "windows-container")
         return state
 
     def _refresh_connections(self):
@@ -50,7 +77,8 @@ class WindowsService(base.DesktopService):
             self.models = OllamaClient().models()
             self.model_status = "Gemma / Qwen · vollständig lokal"
         except Exception as exc:
-            self.model_status = "Lokales Ollama nicht erreichbar"
+            self.models = []
+            self.model_status = "Ollama optional · nicht erreichbar"
             self.log(str(exc))
         self.push()
 
@@ -65,12 +93,18 @@ class WindowsService(base.DesktopService):
         )
 
     def transcribe_work(self, cancel):
-        # Free LLM VRAM before loading WhisperX. No simultaneous model jobs.
-        client = OllamaClient()
-        for model in client.request("/api/ps").get("models", []):
-            if cancel.is_set():
-                raise InterruptedError()
-            client.unload(model["name"])
+        # Free LLM VRAM before loading WhisperX when Ollama is available. Native
+        # transcription must remain usable when Ollama was deliberately skipped.
+        try:
+            client = OllamaClient()
+            for model in client.request("/api/ps").get("models", []):
+                if cancel.is_set():
+                    raise InterruptedError()
+                client.unload(model["name"])
+        except InterruptedError:
+            raise
+        except Exception as exc:
+            self.log("Ollama ist nicht aktiv; Transkription läuft ohne Auswertungsmodell. " + str(exc))
         super().transcribe_work(cancel)
 
     def command(self, action, data):
@@ -124,11 +158,16 @@ class WindowsService(base.DesktopService):
             model = data.get("model", "")
             if model not in ("gemma4:e2b", "qwen3:14b-q4_K_M"):
                 raise ValueError("Bitte Gemma oder Qwen aus der Modellauswahl wählen.")
+            executable = find_ollama()
+            if not executable:
+                raise ValueError(
+                    "Ollama ist nicht installiert. In der Einrichtung kann es optional für Protokolle und Auswertungen installiert werden."
+                )
 
             def download(cancel):
                 self.status = "Modell wird lokal heruntergeladen: " + model
                 self.push()
-                self.run_process(["ollama", "pull", model], cancel)
+                self.run_process([executable, "pull", model], cancel)
                 self._refresh_connections()
                 self.status = "Modell lokal bereit: " + model
 
