@@ -7,50 +7,108 @@ its Windows executable is available, WinWhisper starts a private local server on
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import shutil
-import site
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.request
 
+TORCHCODEC_FFMPEG_URL = (
+    "https://pytorch.s3.amazonaws.com/torchcodec/ffmpeg/2025-03-14/"
+    "windows_x86_64/7.0.1.tar.gz"
+)
+TORCHCODEC_FFMPEG_SHA256 = (
+    "ae391ace382330e912793b70b68529ee7c91026d2869b4df7e7c3e7d3656bdd5"
+)
+_DLL_HANDLES = []
 
-def _prepare_torchcodec_dlls():
-    """Make PyAV's bundled shared FFmpeg libraries visible to TorchCodec.
 
-    Python 3.8+ tightened DLL lookup on Windows. PyAV's wheel already ships the
-    FFmpeg shared DLLs, so copy them next to TorchCodec's extension DLLs instead
-    of requiring a machine-wide FFmpeg installation or administrator rights.
+def _find_ffmpeg_dll_dir(root: Path):
+    for dll in root.rglob("avcodec*.dll"):
+        directory = dll.parent
+        if any(directory.glob("avformat*.dll")) and any(directory.glob("avutil*.dll")):
+            return directory
+    return None
+
+
+def _download_torchcodec_ffmpeg(target: Path):
+    """Install TorchCodec's own pinned Windows FFmpeg 7 runtime locally."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    archive = target.parent / "ffmpeg-7.0.1-windows-x86_64.tar.gz.part"
+    staging = target.parent / (target.name + ".part")
+    shutil.rmtree(staging, ignore_errors=True)
+    archive.unlink(missing_ok=True)
+    digest = hashlib.sha256()
+    try:
+        with urllib.request.urlopen(TORCHCODEC_FFMPEG_URL, timeout=120) as response, archive.open("wb") as out:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                out.write(chunk)
+        if digest.hexdigest().lower() != TORCHCODEC_FFMPEG_SHA256:
+            raise RuntimeError("FFmpeg-Download hat eine unerwartete SHA-256-Prüfsumme.")
+        staging.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(archive, "r:gz") as bundle:
+            members = bundle.getmembers()
+            root = staging.resolve()
+            for member in members:
+                if member.issym() or member.islnk():
+                    raise RuntimeError("FFmpeg-Archiv enthält unerwartete Verknüpfungen.")
+                destination = (staging / member.name).resolve()
+                if not destination.is_relative_to(root):
+                    raise RuntimeError("FFmpeg-Archiv enthält einen ungültigen Pfad.")
+            bundle.extractall(staging, members=members)
+        if not _find_ffmpeg_dll_dir(staging):
+            raise RuntimeError("FFmpeg-Archiv enthält keine erwarteten Shared Libraries.")
+        shutil.rmtree(target, ignore_errors=True)
+        os.replace(staging, target)
+    finally:
+        archive.unlink(missing_ok=True)
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _prepare_torchcodec_dlls(strict=False):
+    """Expose a verified FFmpeg 7 shared runtime to TorchCodec on Windows.
+
+    TorchCodec 0.7 is paired with PyTorch 2.8 and supports FFmpeg 4-7. Its own
+    project publishes a Windows FFmpeg 7.0.1 bundle with a fixed SHA-256. Keeping
+    that runtime inside the WinWhisper workspace avoids system-wide FFmpeg,
+    administrator rights, WSL and Docker.
     """
     if os.name != "nt":
-        return
-    roots = [Path(p) for p in site.getsitepackages()]
-    user = site.getusersitepackages()
-    if user:
-        roots.append(Path(user))
-    for root in roots:
-        source = root / "av.libs"
-        target = root / "torchcodec"
-        if not source.is_dir() or not target.is_dir():
-            continue
-        copied = 0
-        for dll in source.glob("*.dll"):
-            destination = target / dll.name
-            if not destination.is_file() or destination.stat().st_size != dll.stat().st_size:
-                temporary = destination.with_suffix(destination.suffix + ".tmp")
-                shutil.copy2(dll, temporary)
-                os.replace(temporary, destination)
-            copied += 1
-        if copied:
-            print(f"FFmpeg-Laufzeit für TorchCodec vorbereitet ({copied} DLLs).", file=sys.stderr, flush=True)
-            return
-    print(
-        "Hinweis: Die geteilten FFmpeg-Bibliotheken für die optionale Sprechertrennung wurden nicht gefunden.",
-        file=sys.stderr,
-        flush=True,
-    )
+        return None
+    data = Path(os.environ["WINWHISPER_DATA"])
+    target = data / "runtime" / "native" / "ffmpeg-shared-7.0.1"
+    dll_dir = _find_ffmpeg_dll_dir(target) if target.is_dir() else None
+    if dll_dir is None:
+        try:
+            print("FFmpeg-Shared-Laufzeit für Sprechertrennung wird eingerichtet …", file=sys.stderr, flush=True)
+            _download_torchcodec_ffmpeg(target)
+            dll_dir = _find_ffmpeg_dll_dir(target)
+        except Exception as exc:
+            if strict:
+                raise RuntimeError("FFmpeg-Shared-Laufzeit für TorchCodec konnte nicht eingerichtet werden: " + str(exc)) from exc
+            print(
+                "Hinweis: Sprechertrennung ist derzeit nicht bereit, Transkription funktioniert weiter. " + str(exc),
+                file=sys.stderr,
+                flush=True,
+            )
+            return None
+    if dll_dir is None:
+        if strict:
+            raise RuntimeError("FFmpeg-Shared-Laufzeit für TorchCodec wurde nicht gefunden.")
+        return None
+    os.environ["WINWHISPER_FFMPEG_SHARED"] = str(dll_dir)
+    os.environ["PATH"] = str(dll_dir) + os.pathsep + os.environ.get("PATH", "")
+    if hasattr(os, "add_dll_directory"):
+        _DLL_HANDLES.append(os.add_dll_directory(str(dll_dir)))
+    return dll_dir
 
 
 def _prepare_ffmpeg():
