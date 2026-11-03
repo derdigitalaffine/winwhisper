@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {randomUUID}=require('node:crypto');
-const {DockerRuntime,run}=require('./runtime.cjs');
+const {RuntimeManager,run}=require('./runtime.cjs');
 const {Backend}=require('./backend.cjs');
 const {WorkspaceFiles}=require('./files.cjs');
 const {WavWriter,repairRecordings}=require('./wav.cjs');
@@ -19,7 +19,7 @@ const allowed=new Set(['init','refresh','logs','cancel','waveform','settings','t
 
 function send(event){if(win&&!win.isDestroyed())win.webContents.send('studio:event',event);}
 function checkSender(event){if(event.sender!==win?.webContents||event.senderFrame?.url!==TRUSTED)throw new Error('Nicht autorisierte Fensteranfrage.');}
-function emptyState(){return {project:false,busy:false,recording:false,status:'Lokale Windows-Umgebung einrichten.',title:'Neue Aufnahme',date:'',context:'',project_path:'',duration:0,spans:[],audio_url:'',segments:[],speakers:{},reports:[],can_undo:false,preliminary:false,models:[],model_status:'Container noch nicht gestartet',microphones:[{name:'Standardmikrofon',value:''}],recent:[],settings:{language:'de',asr_model:'small',device:'auto',diarize:false,speaker_count:'auto',microphone:'',live:false,finalize_live:true},profiles};}
+function emptyState(){return {project:false,busy:false,recording:false,status:'Lokale Windows-Umgebung einrichten.',title:'Neue Aufnahme',date:'',context:'',project_path:'',duration:0,spans:[],audio_url:'',segments:[],speakers:{},reports:[],can_undo:false,preliminary:false,models:[],model_status:'Lokale KI-Laufzeit noch nicht gestartet',microphones:[{name:'Standardmikrofon',value:''}],recent:[],settings:{language:'de',asr_model:'small',device:'auto',diarize:false,speaker_count:'auto',microphone:'',live:false,finalize_live:true},profiles};}
 function receive(event){
   if(event.type==='state'){
     if(restoring&&!event.data.project)return;
@@ -63,12 +63,12 @@ async function command(action,data={}){
     return recover();
   }
   if(action==='refresh')return recover();
-  if(!backend.child)throw new Error('Bitte zuerst unter „Einrichtung“ den lokalen Container starten.');
+  if(!backend.child)throw new Error('Bitte zuerst unter „Einrichtung“ die lokale KI-Laufzeit starten.');
   return backend.request(action,data);
 }
 async function chooseFile(mode,data={}){
   if(fileTransfer||lastState?.busy||lastState?.recording||capture)throw new Error('Bitte zuerst die Aufnahme oder Verarbeitung beenden.');
-  if(!backend.child)throw new Error('Bitte zuerst den lokalen Container einrichten und starten.');
+  if(!backend.child)throw new Error('Bitte zuerst die lokale KI-Laufzeit einrichten und starten.');
   fileTransfer=true;receive({type:'state',data:lastState||emptyState()});
   try {
   const open={audio:['Audio oder Video öffnen',[{name:'Audio / Video',extensions:['wav','mp3','m4a','flac','ogg','opus','aac','wma','aiff','mp4','mkv','webm','mov']},{name:'Alle Dateien',extensions:['*']}]],project:['Projekt öffnen',[{name:'WinWhisper-Projekt',extensions:['json']}]],transcript:['WhisperX-Transkript importieren',[{name:'JSON',extensions:['json']}]]};
@@ -87,7 +87,6 @@ async function chooseFile(mode,data={}){
   files.checkDestination(result.filePath);
   const logical=files.exportPath('.'+choice[3]);
   if(mode==='audio_export'){
-    // Export is an asynchronous engine job. Wait for its completion before copying.
     let listener,timer;
     const completed=new Promise((resolve,reject)=>{
       listener=event=>{if(event.type==='state'&&!event.data.busy){event.data.status?.startsWith('Fehler:')?reject(new Error(event.data.status)):resolve();}};
@@ -104,7 +103,7 @@ async function chooseFile(mode,data={}){
 }
 async function startCapture(){
   if(fileTransfer||capture||lastState?.busy||lastState?.recording)throw new Error('Eine Aufnahme, Dateiübertragung oder Verarbeitung läuft bereits.');
-  if(!backend.child)throw new Error('Bitte zuerst den lokalen Container starten.');
+  if(!backend.child)throw new Error('Bitte zuerst die lokale KI-Laufzeit starten.');
   const file=path.join(runtime.workspace,'recordings',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID()+'.wav');
   const writer=new WavWriter(file),id=randomUUID();
   capture={id,writer,peaks:[],stride:1,count:0,peak:0,lastEvent:0};
@@ -130,7 +129,7 @@ async function stopCapture(id){
   return true;
 }
 async function systemAction(action){
-  if(!['wsl','docker','start-docker'].includes(action))throw new Error('Unbekannter Einrichtungsschritt.');
+  if(!['wsl','docker','start-docker','ollama'].includes(action))throw new Error('Unbekannter Einrichtungsschritt.');
   if(process.platform!=='win32')throw new Error('Dieser Einrichtungsschritt ist nur unter Windows verfügbar.');
   const script=path.join(resourceRoot(),'scripts','Initialize-System.ps1');
   return run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',script,'-Action',action],{timeout:30*60*1000,onLine:data=>send({type:'setup_log',data})});
@@ -162,8 +161,7 @@ else{
   app.on('second-instance',()=>{if(win){if(win.isMinimized())win.restore();win.show();win.focus();}});
   app.whenReady().then(()=>{
     const resources=app.isPackaged?process.resourcesPath:path.resolve(__dirname,'..');
-    // Development layout uses container/; installed layout uses resources/engine/.
-    runtime=new DockerRuntime({workspace:path.join(app.getPath('userData'),'workspace'),resources});
+    runtime=new RuntimeManager({workspace:path.join(app.getPath('userData'),'workspace'),resources});
     files=new WorkspaceFiles(runtime.workspace);backend=new Backend(runtime);
     const assets=new Set(['index.html','styles.css','app.js','renderer-core.js','setup.js','native-recorder.js','pcm-worklet.js','icon.svg','icon.png']);
     protocol.handle('winwhisper',request=>{
@@ -197,16 +195,33 @@ else{
     ipcMain.handle('studio:setup',async(e,action,data={})=>{
       checkSender(e);
       if(action==='status')return runtime.inspect();
-      if(action==='prepare'){if(fileTransfer||lastState?.busy||lastState?.recording||capture)throw new Error('Bitte laufende Arbeit zuerst beenden.');if(backend.child)throw new Error('Die Umgebung läuft bereits. Für einen Gerätewechsel die App neu starten.');const result=await runtime.prepare(data);await recover();return result;}
+      if(action==='select'){
+        if(fileTransfer||lastState?.busy||lastState?.recording||capture)throw new Error('Bitte laufende Arbeit zuerst beenden.');
+        if(backend.child)await backend.restart();
+        const result=await runtime.select(data.mode);send({type:'setup_status',data:result});
+        if(result.ready)await recover();return runtime.inspect();
+      }
+      if(action==='prepare'){
+        if(fileTransfer||lastState?.busy||lastState?.recording||capture)throw new Error('Bitte laufende Arbeit zuerst beenden.');
+        if(backend.child)throw new Error('Die Laufzeit läuft bereits. Für einen Gerätewechsel zuerst „Umgebung neu starten“ verwenden.');
+        const result=await runtime.prepare(data);await recover();return result;
+      }
       if(action==='start'){await recover();return runtime.inspect();}
-      if(action==='restart'){if(fileTransfer||lastState?.busy||lastState?.recording||capture)throw new Error('Bitte laufende Arbeit zuerst beenden.');await backend.restart();await recover();return runtime.inspect();}
+      if(action==='restart'){
+        if(fileTransfer||lastState?.busy||lastState?.recording||capture)throw new Error('Bitte laufende Arbeit zuerst beenden.');
+        await backend.restart();await recover();return runtime.inspect();
+      }
       if(action==='workspace')return shell.openPath(runtime.workspace);
-      if(action==='system')return systemAction(data.action);
+      if(action==='system'){
+        const result=await systemAction(data.action);
+        if(data.action==='ollama'&&runtime.mode==='native'&&backend.child){await backend.restart();await recover();}
+        return result;
+      }
       throw new Error('Unbekannte Einrichtungsaktion.');
     });
     ipcMain.handle('studio:window',(e,action)=>{checkSender(e);if(action==='minimize')win.minimize();else if(action==='maximize')win.isMaximized()?win.unmaximize():win.maximize();else if(action==='close')win.close();else if(action==='close-ready'&&closing)return finishClose();else if(action==='close-cancel'){clearTimeout(closeTimer);closing=false;}});
     ipcMain.handle('studio:help',(e)=>{checkSender(e);return shell.openPath(path.join(resourceRoot(),'README.md'));});
-    ipcMain.handle('studio:link',(e,which)=>{checkSender(e);const links={account:'https://huggingface.co/join',model:'https://huggingface.co/pyannote/speaker-diarization-community-1',token:'https://huggingface.co/settings/tokens',docker:'https://docs.docker.com/desktop/setup/install/windows-install/',wsl:'https://learn.microsoft.com/windows/wsl/install'};if(!links[which])throw new Error('Unbekannter Link.');return shell.openExternal(links[which]);});
+    ipcMain.handle('studio:link',(e,which)=>{checkSender(e);const links={account:'https://huggingface.co/join',model:'https://huggingface.co/pyannote/speaker-diarization-community-1',token:'https://huggingface.co/settings/tokens',docker:'https://docs.docker.com/desktop/setup/install/windows-install/',wsl:'https://learn.microsoft.com/windows/wsl/install',ollama:'https://ollama.com/download/windows'};if(!links[which])throw new Error('Unbekannter Link.');return shell.openExternal(links[which]);});
     makeWindow();
     win.webContents.on('did-finish-load',()=>{for(const file of repaired)send({type:'log',data:'Unvollständige WAV-Aufnahme wiederhergestellt: '+file});});
   }).catch(error=>{dialog.showErrorBox('WinWhisper konnte nicht starten',error.message);app.quit();});
