@@ -26,8 +26,10 @@
       <div class="setup-actions"><button class="btn btn-teal" data-setup="prepare">Docker-Laufzeit einrichten</button><button class="btn btn-white" data-setup="start">Vorhandene Umgebung starten</button><button class="btn btn-white" data-setup="restart">Umgebung neu starten</button></div>
     </section>
     <h3>3 · Modelle auswählen</h3>
-    <p>Whisper small wird für Live-Text benötigt. Gemma und Qwen sind nur für Auswertungen nötig. Modell-Downloads können im Arbeitsbereich abgebrochen werden.</p>
-    <div class="setup-actions"><button id="setupAsr" class="btn btn-white" data-setup="asr">Whisper small laden</button><button id="setupGemma" class="btn btn-white" data-setup="gemma">Gemma e2b laden</button><button id="setupQwen" class="btn btn-white" data-setup="qwen">Qwen 14B laden</button></div>
+    <p>Für die Transkription kannst du zwischen <strong>Whisper Tiny</strong> und <strong>Whisper Small</strong> wählen. Tiny ist deutlich kleiner und schneller geladen; Small ist die ausgewogenere Standardvariante.</p>
+    <label class="input-group"><span>Whisper-Modell</span><select id="setupAsrModel"><option value="tiny">Tiny · kleinster Download, sehr schnell</option><option value="small" selected>Small · ausgewogen, Standard</option></select></label>
+    <div class="setup-actions"><button id="setupAsr" class="btn btn-white" data-setup="asr">Ausgewähltes Whisper-Modell laden</button><button id="setupGemma" class="btn btn-white" data-setup="gemma">Gemma e2b laden</button><button id="setupQwen" class="btn btn-white" data-setup="qwen">Qwen 14B laden</button></div>
+    <p>Beim Whisper-Download öffnet sich das Einrichtungsprotokoll automatisch. Dort siehst du Quelle, Cache-Prüfung, Downloadfortschritt, Verifikation und eine konkrete Fehlermeldung.</p>
     <p>Für Sprechertrennung anschließend in den Transkriptionseinstellungen „Sprechermodell einrichten“ wählen.</p>
     <details><summary>Einrichtungsprotokoll</summary><pre id="setupLog" class="activity-log"></pre></details>
     <p id="setupWorkspace" class="setup-workspace"></p><button class="text-button" data-setup="workspace">Aufnahmen, Projekte und Modelle im Explorer öffnen</button>`;
@@ -37,6 +39,8 @@
   const nativeSection=body.querySelector('[data-runtime-native]');
   const dockerSection=body.querySelector('[data-runtime-docker]');
   const dockerMode=document.getElementById('setupDockerMode');
+  const asrModel=document.getElementById('setupAsrModel');
+  const logDetails=body.querySelector('details');
 
   function log(text){const box=$('setupLog');box.textContent=(box.textContent+String(text)+'\n').slice(-24000);box.scrollTop=box.scrollHeight;}
   async function show(){if(window.StudioActions&&(await window.StudioActions.flushEditor())===false)return;const dialog=$('runtimeDialog');if(!dialog.open)dialog.showModal();refresh();}
@@ -91,7 +95,11 @@
         await api.command('model_pull',{model:action==='gemma'?'gemma4:e2b':'qwen3:14b-q4_K_M'});
         log('Download gestartet. Fortschritt unter Aktivitätsprotokoll; „Abbrechen“ stoppt den Auftrag.');
       }else if(action==='asr'){
-        await api.command('warmup_asr',{model:'small'});log('Whisper-small-Download gestartet. Er wird auch für Live-Text benötigt.');
+        const model=asrModel.value;
+        logDetails.open=true;
+        log(`Whisper-${model}-Download wird gestartet. Der Cache wird zuerst geprüft; danach folgen Download und lokale Verifikation.`);
+        await api.command('warmup_asr',{model});
+        log(`Whisper-${model} läuft im Hintergrund. Alle Fortschritts- und Fehlermeldungen erscheinen hier.`);
       }
     });
   });
@@ -101,7 +109,16 @@
     if(event.type==='setup_log')log(event.data);
     else if(event.type==='setup_status'){display(event.data);if(!event.data.ready)show();}
     else if(event.type==='log'&&$('runtimeDialog').open)log(event.data);
-    else if(event.type==='state'){stateBusy=!!(event.data.busy||event.data.recording);updateDisabled();}
+    else if(event.type==='state'){
+      stateBusy=!!(event.data.busy||event.data.recording);
+      if(event.data.busy&&event.data.operation==='Whisper-Modell herunterladen'){
+        $('setupSummary').textContent=event.data.status||'Whisper-Modell wird heruntergeladen …';
+        logDetails.open=true;
+      }else if(!event.data.busy&&event.data.status&&/Whisper .*lokal bereit/.test(event.data.status)){
+        $('setupSummary').textContent=event.data.status;
+      }
+      updateDisabled();
+    }
   });
   api.setup('status').then(status=>{display(status);if(!status.ready)show();}).catch(error=>log(error.message));
 })();
