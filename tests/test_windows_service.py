@@ -61,6 +61,20 @@ class WindowsServiceTests(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(), original)
         self.assertFalse(self.service.state()["recording"])
 
+    def test_portable_data_recording_path_maps_to_windows_workspace(self):
+        self.service.command(
+            "external_record_start",
+            {"path": "/data/recordings/Windows Aufnahme ü.wav"},
+        )
+        self.assertEqual(self.service.record_path, self.source.resolve())
+        self.service.command("shutdown", {})
+
+    def test_portable_data_path_rejects_traversal(self):
+        with self.assertRaises(ValueError):
+            self.service.command(
+                "external_record_start", {"path": "/data/recordings/../secret.wav"}
+            )
+
     def test_native_platform_marker_is_reported_from_environment(self):
         with patch.dict(os.environ, {"WINWHISPER_PLATFORM": "windows-native"}):
             self.assertEqual(self.service.state()["platform"], "windows-native")
