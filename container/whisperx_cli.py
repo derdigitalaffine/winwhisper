@@ -1,4 +1,4 @@
-"""Container entry for batch transcription, live text and speaker setup."""
+"""Container/native entry for batch transcription, live text and speaker setup."""
 
 import os
 from pathlib import Path
@@ -14,10 +14,12 @@ if "--live" in sys.argv:
     )
     raise SystemExit(0)
 if "--studio-auto-device" in sys.argv:
+    import ctranslate2
     import torch
 
     sys.argv.remove("--studio-auto-device")
-    sys.argv += ["--device", "cuda" if torch.cuda.is_available() else "cpu"]
+    cuda = torch.cuda.is_available() and ctranslate2.get_cuda_device_count() > 0
+    sys.argv += ["--device", "cuda" if cuda else "cpu"]
 if "--setup-speakers" in sys.argv:
     import torch
     from huggingface_hub import get_token
