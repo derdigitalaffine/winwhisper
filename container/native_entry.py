@@ -106,7 +106,7 @@ def main():
     ollama, log = _start_ollama()
     service = None
     try:
-        from whisperx_studio.windows_service import WindowsService, serve
+        from whisperx_studio.managed_windows_service import WindowsService, serve
 
         service = WindowsService()
         serve(service)
