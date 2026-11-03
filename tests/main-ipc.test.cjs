@@ -1,14 +1,16 @@
 "use strict";
-// Execute production main-process wiring with Electron/Docker boundaries mocked.
+// Execute production main-process wiring with Electron/runtime boundaries mocked.
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {EventEmitter}=require('node:events');
 async function harness(t){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'winwhisper-main-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   const handlers=new Map(),events=[],protocols=new Map(),fetches=[];let win,options,requestPermission,checkPermission,schemes,openChoice={canceled:true};
   class Runtime extends EventEmitter{
-    constructor({workspace}){super();this.workspace=workspace;fs.mkdirSync(path.join(workspace,'recordings'),{recursive:true});this.ready=false;}
-    async inspect(){return {docker:this.ready,linux:true,image:this.ready,ready:this.ready,workspace:this.workspace};}
+    constructor({workspace}){super();this.workspace=workspace;this.mode='native';this.flight=null;fs.mkdirSync(path.join(workspace,'recordings'),{recursive:true});this.ready=false;}
+    async inspect(){return {mode:this.mode,runtimeLabel:this.mode==='native'?'Windows nativ':'Docker / WSL 2',native:this.mode==='native',docker:this.mode==='docker'&&this.ready,linux:true,engine:this.ready,image:this.ready,ollama:this.mode==='docker'&&this.ready,ready:this.ready,workspace:this.workspace};}
     async prepare(){this.ready=true;return this.inspect();}
+    async select(mode){this.mode=mode;this.ready=false;return this.inspect();}
+    async stop(){}
   }
   class Backend extends EventEmitter{
     constructor(runtime){super();this.runtime=runtime;this.child=null;this.state={project:false,busy:false,recording:false,project_path:'',audio_url:'',recent:[]};}
@@ -19,6 +21,8 @@ async function harness(t){
       if(['init','refresh','external_record_start','record_stop'].includes(action))this.emit('event',{type:'state',data:this.state});
       return true;
     }
+    async restart(){this.child=null;}
+    async shutdown(){this.child=null;}
   }
   class Window extends EventEmitter{
     constructor(value){super();options=value;win=this;this.webContents=new EventEmitter();this.webContents.getURL=()=> 'winwhisper://app/index.html';this.webContents.send=(_c,e)=>events.push(e);this.webContents.setWindowOpenHandler=fn=>this.openHandler=fn;}
@@ -27,7 +31,7 @@ async function harness(t){
   const app=new EventEmitter();Object.assign(app,{setName(){},setAppUserModelId(){},requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>dir,isPackaged:false,quit(){}});
   const electron={app,BrowserWindow:Window,ipcMain:{handle:(n,fn)=>handlers.set(n,fn)},dialog:{showOpenDialog:async()=>openChoice,showErrorBox:(_t,msg)=>{throw new Error(msg);}},shell:{openPath:async()=>true,openExternal:async()=>true},protocol:{registerSchemesAsPrivileged:value=>schemes=value,handle:(scheme,handler)=>protocols.set(scheme,handler)},net:{fetch:async(url,options)=>{fetches.push({url,options});return new Response('asset',{status:200});}},session:{defaultSession:{setPermissionRequestHandler:fn=>requestPermission=fn,setPermissionCheckHandler:fn=>checkPermission=fn}}};
   const directory=path.resolve(__dirname,'../desktop');
-  const context={require:name=>name==='electron'?electron:name==='./runtime.cjs'?{DockerRuntime:Runtime}:name==='./backend.cjs'?{Backend}:name.startsWith('./')?require(path.join(directory,name)):require(name),__dirname:directory,process,console,setTimeout,clearTimeout,Uint8Array,ArrayBuffer,Buffer,URL,Response};
+  const context={require:name=>name==='electron'?electron:name==='./runtime.cjs'?{RuntimeManager:Runtime,run:async()=>''}:name==='./backend.cjs'?{Backend}:name.startsWith('./')?require(path.join(directory,name)):require(name),__dirname:directory,process,console,setTimeout,clearTimeout,Uint8Array,ArrayBuffer,Buffer,URL,Response};
   vm.runInNewContext(fs.readFileSync(path.join(directory,'main.cjs'),'utf8'),context);
   await new Promise(r=>setImmediate(r));
   const trusted={sender:win.webContents,senderFrame:{url:win.webContents.getURL()}};
@@ -40,9 +44,12 @@ test('main process uses isolated sandboxed renderer and blocks foreign/unknown I
   assert.throws(()=>h.handlers.get('studio:recent')(h.trusted,'/tmp/not-allowed'),/Bibliothek/);
   assert.equal(h.win.openHandler().action,'deny');
 });
-test('missing Docker leaves a usable setup UI and seven output profiles',async t=>{
+test('missing native runtime leaves a usable setup UI and seven output profiles',async t=>{
   const h=await harness(t);assert.equal(await h.handlers.get('studio:command')(h.trusted,'init'),true);
-  assert(h.events.some(e=>e.type==='setup_status'&&!e.data.ready));const state=h.events.find(e=>e.type==='state').data;assert.equal(state.profiles.length,7);assert.equal(state.busy,false);
+  assert(h.events.some(e=>e.type==='setup_status'&&!e.data.ready&&e.data.mode==='native'));const state=h.events.find(e=>e.type==='state').data;assert.equal(state.profiles.length,7);assert.equal(state.busy,false);
+});
+test('runtime selection can switch to Docker fallback before preparation',async t=>{
+  const h=await harness(t);const status=await h.handlers.get('studio:setup')(h.trusted,'select',{mode:'docker'});assert.equal(status.mode,'docker');assert.equal(status.ready,false);
 });
 test('permissions allow only the trusted microphone and deny camera/display/foreign pages',async t=>{
   const h=await harness(t),handler=h.requestPermission();let allowed;
