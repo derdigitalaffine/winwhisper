@@ -15,6 +15,10 @@ if (-not $hasNode -or $nodeMajor -lt 22) {
 }
 if (Test-Path -LiteralPath 'package-lock.json') { & npm.cmd ci } else { & npm.cmd install }
 if ($LASTEXITCODE -ne 0) { throw 'Build-Abhängigkeiten konnten nicht geladen werden.' }
+& npm.cmd test
+if ($LASTEXITCODE -ne 0) { throw 'Unit-Tests sind fehlgeschlagen.' }
+& npm.cmd run verify:source
+if ($LASTEXITCODE -ne 0) { throw 'Quellstruktur- und Installer-Prüfung ist fehlgeschlagen.' }
 if ($Unpacked) { & npm.cmd run pack:win } else { & npm.cmd run dist:win }
 if ($LASTEXITCODE -ne 0) { throw 'Windows-Build fehlgeschlagen.' }
 $exes = Get-ChildItem -LiteralPath (Join-Path $root 'dist') -Filter '*Setup*.exe'
