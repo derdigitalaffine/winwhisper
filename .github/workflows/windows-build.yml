@@ -19,7 +19,7 @@ jobs:
           python-version: '3.12'
       - name: Compile native Python sources
         shell: pwsh
-        run: python -m compileall -q container tests/test_windows_service.py tests/test_native_engine.py
+        run: python -m compileall -q container tests/test_windows_service.py tests/test_native_engine.py tests/test_model_download.py
       - name: Test and build Windows installer
         shell: pwsh
         run: ./scripts/Build-Windows.ps1
@@ -61,6 +61,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $env:WINWHISPER_DATA | Out-Null
           '{"id":1,"action":"shutdown","data":{}}' | .\.native-smoke\Scripts\python.exe container\native_entry.py
           .\.native-smoke\Scripts\python.exe tests\test_native_engine.py
+          .\.native-smoke\Scripts\python.exe tests\test_model_download.py
       - name: Run Windows service tests with native dependencies
         shell: pwsh
         run: |

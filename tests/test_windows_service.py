@@ -5,6 +5,7 @@ import json
 import io
 import os
 from pathlib import Path
+import sys
 import tempfile
 import threading
 import time
@@ -127,6 +128,27 @@ class WindowsServiceTests(unittest.TestCase):
         with patch("whisperx_studio.windows_service.find_ollama", return_value=None):
             with self.assertRaisesRegex(ValueError, "Ollama ist nicht installiert"):
                 self.service.command("model_pull", {"model": "gemma4:e2b"})
+
+    def test_tiny_whisper_download_uses_verbose_verified_helper(self):
+        with patch.object(self.service, "start_job") as job:
+            self.assertTrue(self.service.command("warmup_asr", {"model": "tiny"}))
+        self.assertEqual(job.call_args.args[0], "Whisper-Modell herunterladen")
+        work = job.call_args.args[1]
+        with patch.object(self.service, "run_process") as run:
+            work(threading.Event())
+        self.assertEqual(
+            run.call_args.args[0],
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "whisperx_studio.model_download",
+                "tiny",
+            ],
+        )
+        self.assertEqual(self.service.status, "Whisper tiny ist lokal bereit.")
+        with self.assertRaises(ValueError):
+            self.service.command("warmup_asr", {"model": "tiny; shell"})
 
     def test_malformed_desktop_requests_do_not_crash_private_service(self):
         stream = io.StringIO(

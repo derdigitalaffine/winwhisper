@@ -169,7 +169,9 @@ class WindowsService(base.DesktopService):
         if cancel.is_set():
             raise InterruptedError()
         if code:
-            raise RuntimeError("Verarbeitung fehlgeschlagen. Details im Aktivitätsprotokoll.")
+            raise RuntimeError(
+                f"Verarbeitung fehlgeschlagen (Exit-Code {code}). Details im Aktivitätsprotokoll."
+            )
 
     def validate_project_paths(self, project):
         root = core.DATA.resolve()
@@ -365,8 +367,26 @@ class WindowsService(base.DesktopService):
             model = data.get("model", "small")
             if model not in ("tiny", "base", "small", "medium", "large-v3"):
                 raise ValueError("Ungültiges Whisper-Modell.")
-            code = "from faster_whisper.utils import download_model; import sys; print(download_model(sys.argv[1]),flush=True)"
-            self.start_job("Whisper-Modell herunterladen", lambda cancel: self.run_process([sys.executable, "-c", code, model], cancel))
+
+            def download_asr(cancel):
+                self.status = f"Whisper {model} wird heruntergeladen und geprüft …"
+                self.push()
+                self.log(f"Whisper-Modell angefordert: {model}. Der Download wird ausführlich protokolliert.")
+                self.run_process(
+                    [
+                        sys.executable,
+                        "-u",
+                        "-m",
+                        "whisperx_studio.model_download",
+                        model,
+                    ],
+                    cancel,
+                )
+                self.status = f"Whisper {model} ist lokal bereit."
+                self.log(self.status)
+                self.push()
+
+            self.start_job("Whisper-Modell herunterladen", download_asr)
             return True
         if action == "setup_speakers" and base.CLI.suffix.lower() == ".py":
             secret = str(data.get("token", "")).strip()
