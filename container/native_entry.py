@@ -9,10 +9,27 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
 import urllib.request
+
+
+def _prepare_ffmpeg():
+    """Expose imageio-ffmpeg's verified wheel binary as ffmpeg.exe on PATH."""
+    import imageio_ffmpeg
+
+    data = Path(os.environ["WINWHISPER_DATA"])
+    bindir = data / "runtime" / "native" / "bin"
+    bindir.mkdir(parents=True, exist_ok=True)
+    target = bindir / "ffmpeg.exe"
+    source = Path(imageio_ffmpeg.get_ffmpeg_exe())
+    if not target.is_file() or target.stat().st_size != source.stat().st_size:
+        temporary = target.with_suffix(".tmp")
+        shutil.copy2(source, temporary)
+        os.replace(temporary, target)
+    os.environ["PATH"] = str(bindir) + os.pathsep + os.environ.get("PATH", "")
 
 
 def _ollama_ready(url: str) -> bool:
@@ -68,6 +85,7 @@ def _start_ollama():
 
 
 def main():
+    _prepare_ffmpeg()
     ollama, log = _start_ollama()
     service = None
     try:
