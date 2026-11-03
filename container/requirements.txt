@@ -1,0 +1,9 @@
+# Direct versions match the working Linux engine. Resolve/lock transitives on the
+# first real container build; no untested full lock is presented as validated.
+whisperx==3.8.6
+torch==2.8.0
+torchaudio==2.8.0
+torchvision==0.23.0
+ctranslate2==4.8.4
+faster-whisper==1.2.1
+pyannote.audio==4.0.7

@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; media-src 'self' winwhisper:; connect-src 'self'; object-src 'none'; base-uri 'none'"
+    />
+    <title>WinWhisper Studio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark" data-icon="waveform"></span>
+          <div>WhisperX<span>STUDIO</span></div>
+        </div>
+        <div class="sidebar-caption">DEIN ARBEITSPLATZ</div>
+        <nav class="main-nav">
+          <button class="nav-item" data-open-setup><span data-icon="server"></span><span>Einrichtung</span></button>
+          <button class="nav-item active" data-nav="transcript">
+            <span data-icon="waveform"></span><span>Arbeitsbereich</span
+            ><span class="nav-dot"></span>
+          </button>
+          <button class="nav-item" data-nav="reports">
+            <span data-icon="document"></span><span>Auswertungen</span
+            ><span id="reportCount" class="nav-count">0</span>
+          </button>
+          <button class="nav-item" data-action="library">
+            <span data-icon="folder"></span><span>Bibliothek</span>
+          </button>
+        </nav>
+        <div class="sidebar-section-heading">
+          <span class="sidebar-caption">ZULETZT BEARBEITET</span
+          ><button
+            class="icon-btn dark"
+            data-action="open"
+            title="Aufnahme öffnen"
+            aria-label="Aufnahme öffnen"
+          >
+            <span data-icon="plus"></span>
+          </button>
+        </div>
+        <div id="recentProjects" class="recent-projects"></div>
+        <div class="sidebar-spacer"></div>
+        <div class="transcription-card">
+          <div class="transcription-heading">
+            <span data-icon="sliders"></span><span>Transkription</span
+            ><button
+              class="icon-btn dark"
+              data-action="settings"
+              title="Einstellungen"
+              aria-label="Transkription einstellen"
+            >
+              <span data-icon="settings"></span>
+            </button>
+          </div>
+          <div class="transcription-settings">
+            <span id="languageChip">Deutsch</span
+            ><span class="dot-separator">·</span
+            ><span id="speakerChip">Sprecher optional</span>
+          </div>
+          <button
+            id="transcribeButton"
+            class="btn btn-mint full"
+            data-action="transcribe"
+            disabled
+          >
+            <span data-icon="sparkles"></span><span>Transkribieren</span>
+          </button>
+        </div>
+        <div class="sidebar-footer">
+          <span class="privacy-symbol" data-icon="shield"></span>
+          <div>
+            <strong>Dein Gespräch bleibt hier.</strong
+            ><span>Lokal auf deinem Rechner</span>
+          </div>
+          <button
+            class="icon-btn dark"
+            data-action="help"
+            title="Anleitung öffnen"
+            aria-label="Anleitung öffnen"
+          >
+            <span data-icon="help"></span>
+          </button>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="titlebar">
+          <div class="breadcrumb">
+            <span data-icon="grid"></span><span>Arbeitsplatz</span
+            ><span class="crumb-separator">/</span
+            ><span id="breadcrumbTitle">Neue Aufnahme</span>
+          </div>
+          <div class="window-controls">
+            <button data-window="minimize" aria-label="Minimieren">
+              <span data-icon="minus"></span></button
+            ><button data-window="maximize" aria-label="Maximieren">
+              <span data-icon="maximize"></span></button
+            ><button
+              data-window="close"
+              class="window-close"
+              aria-label="Schließen"
+            >
+              <span data-icon="x"></span>
+            </button>
+          </div>
+        </div>
+        <header class="workspace-header">
+          <div class="workspace-heading">
+            <div class="eyebrow">DEIN AUDIO. KLARE GEDANKEN.</div>
+            <div class="heading-line">
+              <h1 id="projectTitle">Neue Aufnahme</h1>
+              <button
+                id="editMetadata"
+                class="icon-btn"
+                data-action="metadata"
+                title="Titel und Sitzungsangaben bearbeiten"
+                aria-label="Sitzungsangaben bearbeiten"
+                disabled
+              >
+                <span data-icon="edit"></span>
+              </button>
+            </div>
+            <div class="workspace-meta">
+              <span id="projectDate"
+                >Besprechungen, Interviews und deine Ideen.</span
+              ><span id="savedIndicator" class="saved-indicator" hidden
+                ><span data-icon="check-circle"></span>Automatisch
+                gespeichert</span
+              >
+            </div>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-white" data-action="open">
+              <span data-icon="upload"></span>Datei öffnen</button
+            ><button id="recordButton" class="btn btn-ink" data-action="record">
+              <span class="record-dot"></span><span>Aufnehmen</span></button
+            ><button
+              id="moreButton"
+              class="icon-btn more-btn"
+              data-action="more"
+              title="Weitere Aktionen"
+              aria-label="Weitere Aktionen"
+            >
+              <span data-icon="more"></span>
+            </button>
+          </div>
+        </header>
+        <div class="workspace-tabs">
+          <div class="tab-group">
+            <button class="workspace-tab active" data-nav="transcript">
+              <span data-icon="text"></span>Transkript<span
+                id="segmentCount"
+                class="tab-count"
+                >0</span
+              ></button
+            ><button class="workspace-tab" data-nav="reports">
+              <span data-icon="sparkles"></span>Auswertungen
+            </button>
+          </div>
+          <div id="audioDuration" class="duration-pill">
+            <span data-icon="clock"></span
+            ><span>Bereit für deine Aufnahme</span>
+          </div>
+        </div>
+        <section id="audioCard" class="audio-card">
+          <div class="audio-card-header">
+            <div class="audio-file">
+              <span class="file-symbol" data-icon="audio-file"></span>
+              <div>
+                <strong id="audioFileName">Deine Aufnahme, im Überblick.</strong
+                ><span id="audioFileInfo"
+                  >Eine Datei öffnen oder mit dem Mikrofon aufnehmen.</span
+                >
+              </div>
+            </div>
+            <span id="originalBadge" class="quiet-badge" hidden
+              ><span data-icon="shield"></span>Original geschützt</span
+            ><span id="recordingBadge" class="recording-badge" hidden
+              ><span class="record-dot"></span>Aufnahme läuft</span
+            >
+          </div>
+          <div class="waveform-wrap">
+            <canvas
+              id="waveform"
+              aria-label="Audio-Waveform: Klicken zum Springen, Ziehen zum Markieren"
+            ></canvas>
+            <div id="waveformEmpty" class="waveform-empty">
+              <span data-icon="waveform"></span
+              ><span>Hier wird dein Audio sichtbar.</span>
+            </div>
+            <span id="hoverTime" class="hover-time" hidden>00:00</span>
+          </div>
+          <div class="transport">
+            <div class="play-controls">
+              <button
+                id="playButton"
+                class="play-btn"
+                data-action="play"
+                disabled
+                aria-label="Abspielen"
+              >
+                <span data-icon="play"></span></button
+              ><button
+                id="backButton"
+                class="icon-btn"
+                data-action="back"
+                disabled
+                title="10 Sekunden zurück"
+                aria-label="10 Sekunden zurück"
+              >
+                <span data-icon="rewind"></span></button
+              ><span id="playTime" class="play-time"
+                >00:00 <span>/ 00:00</span></span
+              ><select
+                id="playbackSpeed"
+                class="speed-select"
+                aria-label="Wiedergabegeschwindigkeit"
+              >
+                <option value="0.5">0,5×</option>
+                <option value="0.75">0,75×</option>
+                <option selected value="1">1×</option>
+                <option value="1.25">1,25×</option>
+                <option value="1.5">1,5×</option>
+                <option value="2">2×</option>
+              </select>
+            </div>
+            <div class="selection-controls">
+              <span id="selectionHint"
+                >Ziehen, um einen Bereich zu markieren</span
+              >
+              <div id="selectionTimes" hidden>
+                <input
+                  id="selectionStart"
+                  aria-label="Auswahl Anfang"
+                  value="00:00:00.000"
+                /><span>—</span
+                ><input
+                  id="selectionEnd"
+                  aria-label="Auswahl Ende"
+                  value="00:00:00.000"
+                /><button
+                  class="icon-btn small"
+                  data-action="setSelection"
+                  title="Zeitfelder übernehmen"
+                  aria-label="Auswahl übernehmen"
+                >
+                  <span data-icon="check"></span>
+                </button>
+              </div>
+              <button
+                id="deleteSelection"
+                class="icon-btn"
+                data-action="cut"
+                disabled
+                title="Auswahl entfernen"
+                aria-label="Auswahl entfernen"
+              >
+                <span data-icon="scissors"></span></button
+              ><button
+                id="trimSelection"
+                class="icon-btn"
+                data-action="trim"
+                disabled
+                title="Nur Auswahl behalten"
+                aria-label="Nur Auswahl behalten"
+              >
+                <span data-icon="crop"></span></button
+              ><span class="toolbar-divider"></span
+              ><button
+                id="undoButton"
+                class="icon-btn"
+                data-action="undo"
+                disabled
+                title="Schnitt rückgängig"
+                aria-label="Schnitt rückgängig"
+              >
+                <span data-icon="undo"></span>
+              </button>
+            </div>
+            <div class="zoom-controls">
+              <span data-icon="zoom-out"></span
+              ><input
+                id="zoom"
+                type="range"
+                min="0"
+                max="4"
+                step="0.02"
+                value="0"
+                aria-label="Waveform vergrößern"
+              /><span data-icon="zoom-in"></span
+              ><button class="text-button" data-action="zoomReset">
+                Gesamt
+              </button>
+            </div>
+          </div>
+          <input
+            id="waveScroll"
+            type="range"
+            min="0"
+            max="1"
+            step="0.0001"
+            value="0"
+            aria-label="Zeitachse verschieben"
+            hidden
+          />
+        </section>
+        <div id="transcriptView" class="workspace-content">
+          <section class="transcript-panel panel">
+            <div class="panel-toolbar">
+              <div class="panel-title">
+                Transkript
+                <span id="transcriptMeta">Noch keine Abschnitte</span>
+              </div>
+              <div class="panel-actions">
+                <label class="search"
+                  ><span data-icon="search"></span
+                  ><input
+                    id="transcriptSearch"
+                    placeholder="Im Gespräch suchen …"
+                    aria-label="Im Transkript suchen"
+                  /><kbd>⌕</kbd></label
+                ><button
+                  class="icon-btn"
+                  data-action="speakers"
+                  title="Sprecher benennen"
+                  aria-label="Sprecher bearbeiten"
+                >
+                  <span data-icon="users"></span></button
+                ><button
+                  class="icon-btn"
+                  data-action="exportTranscript"
+                  title="Transkript als Markdown exportieren"
+                  aria-label="Transkript exportieren"
+                >
+                  <span data-icon="download"></span>
+                </button>
+              </div>
+            </div>
+            <div id="transcriptList" class="transcript-list"></div>
+          </section>
+          <aside class="inspector panel">
+            <div class="inspector-title">
+              <span data-icon="edit"></span
+              ><strong>Abschnitt bearbeiten</strong>
+            </div>
+            <div id="inspectorEmpty" class="inspector-empty">
+              <span class="inspector-illustration" data-icon="messages"></span>
+              <h3>Die richtigen Worte.</h3>
+              <p>
+                Wähle einen Abschnitt aus, um ihn anzuhören, zu korrigieren oder
+                einem Sprecher zuzuordnen.
+              </p>
+              <div class="shortcut-note">
+                <kbd>Leertaste</kbd><span>Abspielen / Pause</span>
+              </div>
+            </div>
+            <div id="inspectorEditor" class="inspector-editor" hidden>
+              <div class="inspector-time">
+                <span id="selectedTime">00:00–00:00</span
+                ><button class="text-button" data-action="seekSelected">
+                  <span data-icon="play"></span>Anhören
+                </button>
+              </div>
+              <label class="field-label" for="segmentSpeaker">SPRECHER</label>
+              <div class="speaker-field">
+                <select id="segmentSpeaker"></select
+                ><button
+                  class="icon-btn bordered"
+                  data-action="addSpeaker"
+                  title="Sprecher hinzufügen"
+                  aria-label="Sprecher hinzufügen"
+                >
+                  <span data-icon="plus"></span>
+                </button>
+              </div>
+              <label class="field-label" for="segmentText">GESAGTES</label
+              ><textarea
+                id="segmentText"
+                spellcheck="true"
+                placeholder="Text des Abschnitts …"
+              ></textarea>
+              <div class="inspector-save">
+                <span data-icon="check-circle"></span
+                ><span id="editSaveStatus">Änderungen werden gespeichert</span>
+              </div>
+            </div>
+            <div class="inspector-bottom">
+              <span data-icon="info"></span
+              ><span>Dein Original bleibt unverändert.</span>
+            </div>
+          </aside>
+        </div>
+        <div id="reportsView" class="workspace-content reports-content" hidden>
+          <section class="result-list-panel panel">
+            <div class="panel-toolbar">
+              <div class="panel-title">Auswertungen</div>
+              <button
+                class="icon-btn accent-icon"
+                data-action="newReport"
+                title="Neue Auswertung"
+                aria-label="Auswertung hinzufügen"
+              >
+                <span data-icon="plus"></span>
+              </button>
+            </div>
+            <div id="resultList" class="result-list"></div>
+            <div class="result-list-bottom">
+              <button class="btn btn-mint full" data-action="newReport">
+                <span data-icon="sparkles"></span>Neue Auswertung
+              </button>
+            </div>
+          </section>
+          <section id="resultWorkspace" class="result-workspace"></section>
+        </div>
+        <footer class="statusbar">
+          <div class="status-left">
+            <span id="statusDot" class="status-dot"></span
+            ><span id="statusText">Verbinde lokalen Hintergrunddienst …</span
+            ><button
+              id="cancelButton"
+              class="text-button danger"
+              data-action="cancel"
+              hidden
+            >
+              Abbrechen
+            </button>
+          </div>
+          <button
+            id="connectionStatus"
+            class="connection-status"
+            data-action="activity"
+          >
+            <span data-icon="server"></span><span>Lokal</span>
+          </button>
+        </footer>
+        <div id="progressBar" class="progress-bar" hidden><span></span></div>
+      </main>
+    </div>
+    <div id="overflowMenu" class="popup-menu" hidden>
+      <button data-action="saveProject">
+        <span data-icon="save"></span>Projekt speichern unter …</button
+      ><button data-action="openProject">
+        <span data-icon="folder"></span>Projektdatei öffnen …
+      </button>
+      <div class="menu-separator"></div>
+      <button data-action="exportAudio">
+        <span data-icon="audio-file"></span>Bearbeitete Audiofassung exportieren</button
+      ><button data-action="importTranscript">
+        <span data-icon="upload"></span>WhisperX-Transkript importieren
+      </button>
+      <div class="menu-separator"></div>
+      <button data-action="activity">
+        <span data-icon="activity"></span>Aktivitätsprotokoll</button
+      ><button data-action="help">
+        <span data-icon="help"></span>Anleitung öffnen
+      </button>
+    </div>
+    <dialog id="analysisDialog" class="dialog analysis-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">AUS DEINEM GESPRÄCH</span>
+          <h2>Was möchtest du erstellen?</h2>
+          <p>
+            Du entscheidest. Es wird nur die gewählte Auswertungsart erzeugt.
+          </p>
+        </div>
+        <button
+          class="icon-btn"
+          data-close="analysisDialog"
+          aria-label="Schließen"
+        >
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <form id="analysisForm">
+        <div class="dialog-scroll">
+          <div id="profileGrid" class="profile-grid"></div>
+          <div class="form-section-label">LOKALES MODELL</div>
+          <div class="model-options">
+            <label class="input-group"
+              ><span>Auswerten mit</span
+              ><select id="primaryModel"></select></label
+            ><label class="switch-label compare-switch"
+              ><input id="compareModels" type="checkbox" /><span
+                class="switch"
+              ></span
+              ><span>Modelle vergleichen</span></label
+            ><label id="secondaryModelGroup" class="input-group" hidden
+              ><span>Zweites Modell</span
+              ><select id="secondaryModel"></select
+            ></label>
+          </div>
+          <div class="report-options">
+            <label class="input-group"
+              ><span>Detailgrad</span
+              ><select id="reportDetail">
+                <option value="short">Kompakt</option>
+                <option value="standard">Ausgewogen</option>
+                <option value="detailed" selected>Ausführlich</option>
+              </select></label
+            ><label class="input-group"
+              ><span>Ausgabesprache</span
+              ><select id="reportLanguage">
+                <option value="de">Deutsch</option>
+                <option value="en">Englisch</option>
+              </select></label
+            ><label class="input-group focus-group"
+              ><span>Schwerpunkt <em>optional</em></span
+              ><input
+                id="reportFocus"
+                maxlength="1200"
+                placeholder="z. B. Argumente zu TOP 3 oder offene Zuständigkeiten"
+            /></label>
+          </div>
+          <div class="quality-options">
+            <label class="switch-label"
+              ><input id="verifyEvidence" type="checkbox" checked /><span
+                class="switch"
+              ></span
+              ><span
+                >Zusätzliche Belegprüfung<small
+                  >Ein zweiter Durchgang prüft die Aussagen am
+                  Transkript.</small
+                ></span
+              ></label
+            ><label class="switch-label"
+              ><input id="includeSources" type="checkbox" checked /><span
+                class="switch"
+              ></span
+              ><span
+                >Fundstellen im Markdown<small
+                  >Mit verlinkten Originalauszügen exportieren.</small
+                ></span
+              ></label
+            >
+          </div>
+          <div id="reportModelHint" class="form-hint">
+            <span data-icon="shield"></span
+            ><span
+              >Verarbeitung ausschließlich mit lokalem Ollama. Bei langen
+              Sitzungen werden fertige Abschnitte zwischengespeichert.</span
+            >
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button
+            type="button"
+            class="btn btn-white"
+            data-close="analysisDialog"
+          >
+            Zurück</button
+          ><button id="generateReportButton" class="btn btn-teal" type="submit">
+            <span data-icon="sparkles"></span
+            ><span>Ausführliches Protokoll erstellen</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="settingsDialog" class="dialog settings-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">DEIN WORKFLOW</span>
+          <h2>Transkription einstellen</h2>
+          <p>Die passenden Einstellungen für dein Gespräch.</p>
+        </div>
+        <button
+          class="icon-btn"
+          data-close="settingsDialog"
+          aria-label="Schließen"
+        >
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <form id="settingsForm">
+        <div class="dialog-scroll">
+          <div class="form-grid">
+            <label class="input-group"
+              ><span>Sprache der Aufnahme</span
+              ><select id="asrLanguage">
+                <option value="de">Deutsch</option>
+                <option value="en">Englisch</option>
+                <option value="auto">Automatisch erkennen</option>
+              </select></label
+            ><label class="input-group"
+              ><span>Whisper-Modell</span
+              ><select id="asrModel">
+                <option value="small">Small · ausgewogen</option>
+                <option value="tiny">Tiny · sehr schnell</option>
+                <option value="base">Base · schnell</option>
+                <option value="medium">Medium · genauer</option>
+                <option value="large-v3">Large v3 · höchste Größe</option>
+              </select></label
+            ><label class="input-group"
+              ><span>Verarbeitung</span
+              ><select id="asrDevice">
+                <option value="auto">Automatisch · GPU / CPU</option>
+                <option value="gpu">GPU</option>
+                <option value="cpu">CPU</option>
+              </select></label
+            ><label class="input-group"
+              ><span>Anzahl der Sprecher</span
+              ><select id="asrSpeakers">
+                <option value="auto">Automatisch · höchstens 15</option>
+              </select></label
+            >
+          </div>
+          <div class="setting-block">
+            <label class="switch-label"
+              ><input id="asrDiarize" type="checkbox" /><span
+                class="switch"
+              ></span
+              ><span
+                >Sprecher unterscheiden<small
+                  >Stimmen getrennt erkennen und später Namen vergeben.</small
+                ></span
+              ></label
+            ><button
+              type="button"
+              class="text-button"
+              data-action="setupSpeakers"
+            >
+              Sprechermodell einrichten<span data-icon="arrow-right"></span>
+            </button>
+          </div>
+          <p class="form-note">
+            Größere Whisper-Modelle benötigen mehr Speicher und Zeit. Fehlende
+            Modelle werden bei der ersten Verwendung heruntergeladen.
+          </p>
+        </div>
+        <div class="dialog-footer">
+          <button
+            type="button"
+            class="btn btn-white"
+            data-close="settingsDialog"
+          >
+            Zurück</button
+          ><button class="btn btn-teal" type="submit">
+            Einstellungen übernehmen
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="recordDialog" class="dialog settings-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">EIN GUTER ANFANG</span>
+          <h2>Einfach drauflossprechen.</h2>
+          <p>Die Originalaufnahme wird lokal als WAV gespeichert.</p>
+        </div>
+        <button
+          class="icon-btn"
+          data-close="recordDialog"
+          aria-label="Schließen"
+        >
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <form id="recordForm">
+        <div class="dialog-scroll">
+          <label class="input-group"
+            ><span>Mikrofon</span
+            ><select id="microphoneSelect"></select></label
+          ><button
+            type="button"
+            class="text-button refresh-mics"
+            data-action="refresh"
+          >
+            <span data-icon="refresh"></span>Mikrofone aktualisieren
+          </button>
+          <div class="setting-block">
+            <label class="switch-label"
+              ><input id="liveEnabled" type="checkbox" /><span
+                class="switch"
+              ></span
+              ><span
+                >Live-Text anzeigen<small
+                  >Vorläufige Textvorschau während des Gesprächs.</small
+                ></span
+              ></label
+            >
+          </div>
+          <div class="setting-block">
+            <label class="switch-label"
+              ><input id="liveFinalize" type="checkbox" checked /><span
+                class="switch"
+              ></span
+              ><span
+                >Live-Text anschließend überarbeiten<small
+                  >Nach dem Stoppen genauere Zeitmarken und optionale
+                  Sprechertrennung.</small
+                ></span
+              ></label
+            >
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button type="button" class="btn btn-white" data-close="recordDialog">
+            Zurück</button
+          ><button class="btn btn-teal" type="submit">
+            <span class="record-dot"></span>Aufnahme starten
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="metadataDialog" class="dialog settings-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">DER KONTEXT</span>
+          <h2>Sitzungsangaben</h2>
+        </div>
+        <button
+          class="icon-btn"
+          data-close="metadataDialog"
+          aria-label="Schließen"
+        >
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <form id="metadataForm">
+        <div class="dialog-scroll">
+          <label class="input-group"
+            ><span>Titel</span
+            ><input id="metadataTitle" maxlength="200" required /></label
+          ><label class="input-group"
+            ><span>Sitzungsdatum</span
+            ><input id="metadataDate" type="date" /></label
+          ><label class="input-group"
+            ><span>Themen / Tagesordnung <em>optional</em></span
+            ><textarea
+              id="metadataContext"
+              rows="4"
+              maxlength="1800"
+              placeholder="Themen, Abkürzungen oder Tagesordnung zur Orientierung. Inhalte werden ausschließlich aus dem Transkript übernommen."
+            ></textarea>
+          </label>
+        </div>
+        <div class="dialog-footer">
+          <button
+            type="button"
+            class="btn btn-white"
+            data-close="metadataDialog"
+          >
+            Zurück</button
+          ><button class="btn btn-teal" type="submit">Angaben speichern</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="speakersDialog" class="dialog settings-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">WER HAT GESPROCHEN?</span>
+          <h2>Stimmen bekommen Namen.</h2>
+          <p>Die Namen gelten für diese Aufnahme.</p>
+        </div>
+        <button
+          class="icon-btn"
+          data-close="speakersDialog"
+          aria-label="Schließen"
+        >
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <form id="speakersForm">
+        <div class="dialog-scroll">
+          <div id="speakerNames" class="speaker-names"></div>
+          <button type="button" class="text-button" data-action="addSpeakerRow">
+            <span data-icon="plus"></span>Sprecher hinzufügen
+          </button>
+        </div>
+        <div class="dialog-footer">
+          <button
+            type="button"
+            class="btn btn-white"
+            data-close="speakersDialog"
+          >
+            Zurück</button
+          ><button class="btn btn-teal" type="submit">Namen übernehmen</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="libraryDialog" class="dialog library-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">ALLES AN EINEM ORT</span>
+          <h2>Deine Bibliothek</h2>
+          <p>Automatisch gespeicherte Aufnahmen und Projekte.</p>
+        </div>
+        <button
+          class="icon-btn"
+          data-close="libraryDialog"
+          aria-label="Schließen"
+        >
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <div id="libraryList" class="dialog-scroll library-list"></div>
+      <div class="dialog-footer">
+        <button class="btn btn-white" data-action="openProject">
+          <span data-icon="folder"></span>Projektdatei öffnen</button
+        ><button class="btn btn-teal" data-action="open">
+          <span data-icon="plus"></span>Neue Aufnahme öffnen
+        </button>
+      </div>
+    </dialog>
+    <dialog id="activityDialog" class="dialog activity-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">IM HINTERGRUND</span>
+          <h2>Aktivitätsprotokoll</h2>
+          <p id="activityConnection">Lokale Verarbeitung</p>
+        </div>
+        <button
+          class="icon-btn"
+          data-close="activityDialog"
+          aria-label="Schließen"
+        >
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <pre id="activityLog" class="activity-log"></pre>
+      <div class="dialog-footer">
+        <button class="btn btn-white" data-action="refresh">
+          <span data-icon="refresh"></span>Verbindung prüfen</button
+        ><button class="btn btn-teal" data-close="activityDialog">
+          Schließen
+        </button>
+      </div>
+    </dialog>
+    <dialog id="setupDialog" class="dialog settings-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">EINMAL EINRICHTEN</span>
+          <h2>Sprecher unterscheiden</h2>
+          <p>Das lokale Sprechermodell benötigt eine Hugging-Face-Freigabe.</p>
+        </div>
+        <button
+          class="icon-btn"
+          data-close="setupDialog"
+          aria-label="Schließen"
+        >
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <form id="setupForm">
+        <div class="dialog-scroll">
+          <div class="setup-steps">
+            <button type="button" data-link="account">
+              <span>1</span>Hugging-Face-Konto erstellen<span
+                data-icon="external"
+              ></span></button
+            ><button type="button" data-link="model">
+              <span>2</span>Modellbedingungen freigeben<span
+                data-icon="external"
+              ></span></button
+            ><button type="button" data-link="token">
+              <span>3</span>Read-Token erstellen<span
+                data-icon="external"
+              ></span>
+            </button>
+          </div>
+          <label class="input-group"
+            ><span>Read-Token · bleibt auf diesem Rechner</span
+            ><input
+              id="hfToken"
+              type="password"
+              autocomplete="off"
+              placeholder="hf_…"
+              required
+          /></label>
+        </div>
+        <div class="dialog-footer">
+          <button type="button" class="btn btn-white" data-close="setupDialog">
+            Zurück</button
+          ><button class="btn btn-teal" type="submit">
+            Modell lokal einrichten
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" role="status" class="toast" hidden></div>
+    <audio id="audio" preload="metadata"></audio>
+    <dialog id="runtimeDialog" class="dialog runtime-dialog">
+      <div class="dialog-header"><div><p class="eyebrow">WINDOWS · LOKAL</p><h2>Dein Transkriptionsstudio einrichten</h2><p id="setupSummary">Voraussetzungen werden geprüft.</p></div><button id="setupClose" class="icon-btn" aria-label="Schließen">×</button></div>
+      <div class="dialog-body setup-body">
+        <p>Die Windows-App nimmt Audio auf. WhisperX, Gemma und Qwen arbeiten im lokalen Container. Beim ersten Einrichten werden Programme und Modelle heruntergeladen; Aufnahmen werden nicht hochgeladen.</p>
+        <div class="setup-status"><span id="setupDocker"></span><span id="setupEngine"></span><span id="setupDevice"></span></div>
+        <h3>1 · Windows vorbereiten</h3>
+        <p>WSL 2 und Docker Desktop werden benötigt. Windows kann nach Administratorbestätigung oder einem Neustart fragen. Docker-Lizenzdialoge erscheinen im jeweiligen Installer.</p>
+        <div class="setup-actions"><button class="btn btn-white" data-setup="wsl">WSL 2 einrichten</button><button class="btn btn-white" data-setup="docker">Docker Desktop installieren</button><button class="btn btn-white" data-setup="start-docker">Docker Desktop starten</button><button class="btn btn-white" data-setup="refresh">Prüfen</button></div>
+        <h3>2 · Lokale Umgebung starten</h3>
+        <label>Verarbeitung <select id="setupMode"><option value="auto">Automatisch · NVIDIA-GPU, sonst CPU</option><option value="cpu">Nur CPU</option><option value="gpu">NVIDIA-GPU erforderlich</option></select></label>
+        <p>Die erste Einrichtung lädt mehrere GB. Bereits installierte Images und Modellcaches werden wiederverwendet.</p>
+        <div class="setup-actions"><button class="btn btn-teal" data-setup="prepare">WhisperX und Ollama einrichten</button><button class="btn btn-white" data-setup="start">Vorhandene Umgebung starten</button><button class="btn btn-white" data-setup="restart">Umgebung neu starten</button></div>
+        <h3>3 · Modelle auswählen</h3><p>Whisper small wird für Live-Text benötigt. Gemma ist der Einstieg für Protokolle; Qwen 14B braucht deutlich mehr Arbeitsspeicher. Downloads laufen einzeln und können im Arbeitsbereich abgebrochen werden.</p>
+        <div class="setup-actions"><button id="setupAsr" class="btn btn-white" data-setup="asr">Whisper small laden</button><button id="setupGemma" class="btn btn-white" data-setup="gemma">Gemma e2b laden</button><button id="setupQwen" class="btn btn-white" data-setup="qwen">Qwen 14B laden</button></div>
+        <p>Für Sprechertrennung anschließend in den Transkriptionseinstellungen „Sprechermodell einrichten“ wählen.</p>
+        <details><summary>Einrichtungsprotokoll</summary><pre id="setupLog" class="activity-log"></pre></details>
+        <p id="setupWorkspace" class="setup-workspace"></p><button class="text-button" data-setup="workspace">Aufnahmen, Projekte und Modelle im Explorer öffnen</button>
+      </div>
+    </dialog>
+    <script src="renderer-core.js"></script>
+    <script src="native-recorder.js"></script>
+    <script src="app.js"></script>
+    <script src="setup.js"></script>
+  
+
+
+  </body>
+</html>

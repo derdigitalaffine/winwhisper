@@ -1,0 +1,6 @@
+{
+  "result": {
+    "type": "string",
+    "value": "{\"electronWorklet\":true,\"secure\":true,\"packet\":{\"type\":\"pcm\",\"bytes\":3200}}"
+  }
+}

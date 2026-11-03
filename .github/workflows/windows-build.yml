@@ -1,0 +1,22 @@
+name: Windows installer
+on: [workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build and test Windows installer
+        shell: pwsh
+        run: ./scripts/Build-Windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WinWhisper-Windows-x64
+          path: |
+            dist/*Setup*.exe
+            dist/*.sha256
+          if-no-files-found: error

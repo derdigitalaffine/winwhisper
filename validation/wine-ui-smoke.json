@@ -1,0 +1,9 @@
+{
+  "id": 1,
+  "result": {
+    "result": {
+      "type": "string",
+      "value": "{\"title\":\"WinWhisper Studio\",\"bridge\":\"object\",\"secure\":true,\"text\":\"Gespräch.\\n\\nÖffne eine Aufnahme oder nimm direkt auf. Dein Audio und deine Gedanken bleiben auf deinem Rechner.\\n\\nAudio oder Video öffnen\\nAbschnitt bearbeiten\\nDie richtigen Worte.\\n\\nWähle einen Abschnitt aus, um ihn anzuhören, zu korrigieren oder einem Sprecher zuzuordnen.\\n\\nLeertaste\\nAbspielen / Pause\\nDein Original bleibt unverändert.\\nLokale Windows-Umgebung einrichten.\\nContainer noch nicht gestartet\"}"
+    }
+  }
+}

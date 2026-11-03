@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-03",
+  "status": "source_transferred_tests_stopped_at_user_request",
+  "app_version": "1.0.0",
+  "target": "Windows 11 x64; NVIDIA CUDA or CPU fallback",
+  "artifacts": {
+    "windows_installer_built": true,
+    "installer_matches_latest_source": false,
+    "container_image_built": false,
+    "repository": "https://github.com/derdigitalaffine/winwhisper",
+    "note": "Preliminary installer built before final first-launch fixes. No new build or test after user stop request."
+  },
+  "tests": {
+    "javascript_node": 33,
+    "python_engine_regression": 63,
+    "python_windows_adapter": 9,
+    "total": 105,
+    "all_passed": true
+  },
+  "checks": {
+    "javascript_syntax": true,
+    "renderer_element_ids": true,
+    "installer_inputs_and_icon": true,
+    "python_syntax": true,
+    "ruff_new_python": true,
+    "powershell_utf8_bom_and_crlf": true
+  },
+  "boundaries_mocked": [
+    "Electron BrowserWindow and IPC host",
+    "Docker runtime/daemon",
+    "Windows microphone browser APIs"
+  ],
+  "real_tests": [
+    "Incremental PCM/WAV writing and crash-header repair",
+    "AudioWorklet resampling math at 16/44.1/48/96 kHz",
+    "Host import/export, original protection and path traversal handling",
+    "Python FFmpeg import, editing, export and project persistence",
+    "Actual subprocess cancellation, forced termination and parent-death handling",
+    "Electron/NSIS Windows x64 cross-build completed",
+    "NSIS installation in disposable Wine prefix completed after temporarily disabling the nonfunctional Wine PowerShell placeholder; application code unchanged",
+    "Windows executable loaded its sandboxed renderer and preload bridge under Wine",
+    "Electron 43.8.6 AudioWorklet received 3200-byte PCM packets from Chromium fake microphone",
+    "Container pip install completed and pip check reported no broken requirements"
+  ],
+  "blockers": [],
+  "not_verified": [
+    "Native Windows installation and PowerShell setup",
+    "Real Windows microphone, long recording and playback",
+    "NVIDIA passthrough to Docker/WSL",
+    "Completed container image/startup and Gemma/Qwen/WhisperX inference in this image",
+    "Latest source rebuilt into installer",
+    "verify-container.cjs integration probe (prepared but not executed)"
+  ],
+  "next_step": "Development continues from GitHub; no further tests or workflow runs were started after the user requested stopping.",
+  "container_build": "Stopped at user request during image export; no tagged/running image and no container inference test."
+}

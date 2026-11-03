@@ -1,0 +1,74 @@
+[
+  {
+    "kind": "minutes",
+    "label": "Ausführliches Protokoll",
+    "icon": "document",
+    "description": "Gut formulierter Fließtext mit Argumenten, Einwänden und Ergebnissen.",
+    "categories": [
+      "discussion",
+      "decision",
+      "open_question"
+    ]
+  },
+  {
+    "kind": "results",
+    "label": "Ergebnisprotokoll",
+    "icon": "check-square",
+    "description": "Ergebnisse, Festlegungen und offene Punkte, ohne den gesamten Gesprächsverlauf.",
+    "categories": [
+      "result",
+      "decision",
+      "open_question"
+    ]
+  },
+  {
+    "kind": "chronological",
+    "label": "Verlaufsprotokoll",
+    "icon": "timeline",
+    "description": "Wer brachte wann welche Position, Begründung oder Gegenposition ein?",
+    "categories": [
+      "discussion",
+      "decision",
+      "open_question"
+    ]
+  },
+  {
+    "kind": "summary",
+    "label": "Zusammenfassung",
+    "icon": "sparkles",
+    "description": "Ein kompakter Überblick über die gesamte Aufnahme.",
+    "categories": [
+      "key_point"
+    ]
+  },
+  {
+    "kind": "tasks",
+    "label": "Aufgabenliste",
+    "icon": "check-list",
+    "description": "Konkrete Aufgaben mit Zuständigen, Fristen und überprüfbaren Belegen.",
+    "categories": [
+      "task"
+    ]
+  },
+  {
+    "kind": "decisions",
+    "label": "Beschlüsse & Abstimmungen",
+    "icon": "vote",
+    "description": "Ausdrücklich gefasste Beschlüsse und tatsächlich genannte Abstimmungsergebnisse.",
+    "categories": [
+      "decision",
+      "vote"
+    ]
+  },
+  {
+    "kind": "interview",
+    "label": "Interviewauswertung",
+    "icon": "messages",
+    "description": "Fragen, Antworten und zentrale Positionen der interviewten Personen.",
+    "categories": [
+      "question_answer",
+      "position",
+      "open_question"
+    ]
+  }
+]

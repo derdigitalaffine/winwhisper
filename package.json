@@ -1,0 +1,84 @@
+{
+  "name": "winwhisper-studio",
+  "productName": "WinWhisper Studio",
+  "version": "1.0.0",
+  "description": "Lokaler Windows-Audioeditor mit WhisperX, Gemma und Qwen",
+  "author": "WinWhisper Studio",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node scripts/run-tests.cjs",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "pack:win": "electron-builder --win --x64 --dir --publish never",
+    "verify:source": "node scripts/verify-source.cjs"
+  },
+  "devDependencies": {
+    "electron": "43.8.6",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "de.local.winwhisper.studio",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json",
+      "!desktop/verify.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "container",
+        "to": "engine",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/test_*.py"
+        ]
+      },
+      {
+        "from": "scripts/Initialize-System.ps1",
+        "to": "scripts/Initialize-System.ps1"
+      },
+      {
+        "from": "docs",
+        "to": "docs"
+      },
+      {
+        "from": "README.md",
+        "to": "README.md"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "WinWhisper-Studio-${version}-Setup-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh",
+      "installerLanguages": [
+        "de_DE",
+        "en_US"
+      ],
+      "language": "1031"
+    }
+  }
+}

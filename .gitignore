@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+__pycache__/
+*.pyc
+.env
+.venv/
+.ruff_cache/
+validation/*.log
+validation/container-qa-*/
+validation/source-sha256.json
+validation/ui-setup.png
