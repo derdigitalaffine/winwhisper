@@ -1,5 +1,6 @@
 """Unit tests for the verbose Whisper model manager; no network access."""
 
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -39,7 +40,7 @@ class ModelDownloadTests(unittest.TestCase):
     def test_status_detects_tiny_and_removal_deletes_only_its_repo_cache(self):
         with tempfile.TemporaryDirectory() as temp:
             hub = Path(temp)
-            with patch.object(model_download, "HF_HUB_CACHE", str(hub)):
+            with patch.object(model_download, "HF_HUB_CACHE", str(hub)), patch.dict(os.environ, {"WINWHISPER_DATA": ""}):
                 tiny_root = model_download.cache_dir_for("tiny")
                 snapshot = tiny_root / "snapshots" / "revision-a"
                 self.make_snapshot(snapshot)
@@ -49,6 +50,7 @@ class ModelDownloadTests(unittest.TestCase):
                 status = model_download.model_status("tiny")
                 self.assertTrue(status["installed"])
                 self.assertTrue(status["cached"])
+                self.assertFalse(status["legacy"])
                 self.assertGreater(status["size_mb"], 1)
 
                 self.assertTrue(model_download.remove("tiny"))
@@ -59,15 +61,33 @@ class ModelDownloadTests(unittest.TestCase):
     def test_partial_cache_can_be_removed(self):
         with tempfile.TemporaryDirectory() as temp:
             hub = Path(temp)
-            with patch.object(model_download, "HF_HUB_CACHE", str(hub)):
+            with patch.object(model_download, "HF_HUB_CACHE", str(hub)), patch.dict(os.environ, {"WINWHISPER_DATA": ""}):
                 root = model_download.cache_dir_for("small")
                 root.mkdir(parents=True)
                 self.assertEqual(
                     model_download.model_status("small"),
-                    {"installed": False, "cached": True, "size_mb": 0.0},
+                    {"installed": False, "cached": True, "legacy": False, "size_mb": 0.0},
                 )
                 self.assertTrue(model_download.remove("small"))
                 self.assertFalse(root.exists())
+
+    def test_legacy_shared_cache_is_detected_and_removed_with_native_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp) / "workspace"
+            native_hub = workspace / "models" / "huggingface-native" / "hub"
+            legacy_hub = workspace / "models" / "huggingface" / "hub"
+            with patch.object(model_download, "HF_HUB_CACHE", str(native_hub)), patch.dict(os.environ, {"WINWHISPER_DATA": str(workspace)}):
+                native_root = model_download.cache_dir_for("tiny")
+                legacy_root = model_download.legacy_cache_dir_for("tiny")
+                self.assertIsNotNone(legacy_root)
+                native_root.mkdir(parents=True)
+                legacy_root.mkdir(parents=True)
+                status = model_download.model_status("tiny")
+                self.assertTrue(status["cached"])
+                self.assertTrue(status["legacy"])
+                self.assertTrue(model_download.remove("tiny"))
+                self.assertFalse(native_root.exists())
+                self.assertFalse(legacy_root.exists())
 
     def test_permission_error_names_broken_file_and_recovery_action(self):
         denied = PermissionError(13, "Access denied", r"C:\\cache\\vocabulary.txt")
@@ -77,7 +97,7 @@ class ModelDownloadTests(unittest.TestCase):
         message = str(raised.exception)
         self.assertIn("vocabulary.txt", message)
         self.assertIn("entfernen", message)
-        self.assertIn("symlink-freien Windows-Cache", message)
+        self.assertIn("getrennten Windows-Cache", message)
 
     def test_rejects_unknown_model(self):
         with self.assertRaises(ValueError):
