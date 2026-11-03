@@ -1,18 +1,20 @@
-"""Verbose, cache-aware downloader for local faster-whisper models.
+"""Verbose, cache-aware management for local faster-whisper models.
 
 The upstream faster-whisper helper intentionally disables its tqdm progress bar.
-For the desktop setup we want the opposite: visible progress, useful diagnostics and
-an explicit cache verification before reporting success.
+For the desktop setup we want the opposite: visible progress, useful diagnostics,
+an explicit cache verification and a safe way to remove broken or unused models.
 """
 
 from __future__ import annotations
 
-import os
+import json
 from pathlib import Path
+import shutil
 import sys
 import traceback
 
 from huggingface_hub import snapshot_download
+from huggingface_hub.constants import HF_HUB_CACHE
 
 
 MODELS = {
@@ -37,6 +39,21 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
+def repo_id_for(model: str) -> str:
+    repo_id = MODELS.get(model)
+    if not repo_id:
+        raise ValueError(
+            "Ungültiges Whisper-Modell. Erlaubt: " + ", ".join(MODELS)
+        )
+    return repo_id
+
+
+def cache_dir_for(model: str) -> Path:
+    """Return the exact Hugging Face cache directory for one allowlisted model."""
+    repo_id = repo_id_for(model)
+    return Path(HF_HUB_CACHE) / ("models--" + repo_id.replace("/", "--"))
+
+
 def verify_snapshot(path: str | Path) -> Path:
     root = Path(path)
     missing = [name for name in REQUIRED_FILES if not (root / name).is_file()]
@@ -50,17 +67,61 @@ def verify_snapshot(path: str | Path) -> Path:
     return root
 
 
-def download(model: str) -> Path:
-    repo_id = MODELS.get(model)
-    if not repo_id:
-        raise ValueError(
-            "Ungültiges Whisper-Modell. Erlaubt: " + ", ".join(MODELS)
+def model_status(model: str) -> dict:
+    """Inspect the local cache without touching the network."""
+    root = cache_dir_for(model)
+    result = {"installed": False, "cached": root.exists(), "size_mb": 0.0}
+    snapshots = root / "snapshots"
+    if not snapshots.is_dir():
+        return result
+    try:
+        candidates = sorted(
+            (entry for entry in snapshots.iterdir() if entry.is_dir()),
+            key=lambda entry: entry.stat().st_mtime,
+            reverse=True,
         )
+    except OSError:
+        return result
+    for candidate in candidates:
+        try:
+            verified = verify_snapshot(candidate)
+        except (OSError, RuntimeError):
+            continue
+        result["installed"] = True
+        result["cached"] = True
+        result["size_mb"] = round(
+            (verified / "model.bin").stat().st_size / (1024 * 1024), 1
+        )
+        break
+    return result
 
-    cache_root = os.environ.get("HF_HOME") or "Hugging-Face-Standardcache"
+
+def model_statuses() -> dict:
+    return {model: model_status(model) for model in MODELS}
+
+
+def remove(model: str) -> bool:
+    """Remove only the allowlisted model's own Hugging Face repository cache."""
+    root = cache_dir_for(model)
+    hub = Path(HF_HUB_CACHE).resolve()
+    resolved = root.resolve()
+    if resolved.parent != hub:
+        raise RuntimeError("Whisper-Cachepfad liegt außerhalb des Hugging-Face-Caches.")
+    if not root.exists():
+        log(f"Whisper {model}: kein lokaler Cache vorhanden.")
+        return False
+    log(f"Entferne Whisper {model} aus dem lokalen Modell-Cache …")
+    shutil.rmtree(root)
+    log(f"Whisper {model} wurde lokal entfernt.")
+    return True
+
+
+def download(model: str) -> Path:
+    repo_id = repo_id_for(model)
+
     log(f"Whisper-Download · Modell: {model}")
     log(f"Quelle: https://huggingface.co/{repo_id}")
-    log(f"Lokaler Modell-Cache: {cache_root}")
+    log(f"Lokaler Modell-Cache: {HF_HUB_CACHE}")
     log("Prüfe zuerst, ob bereits ein vollständiges lokales Modell vorhanden ist …")
 
     try:
@@ -83,8 +144,6 @@ def download(model: str) -> Path:
 
     log("Download beendet. Prüfe die lokalen Modelldateien …")
     root = verify_snapshot(downloaded)
-    # A second local-only lookup ensures the snapshot is actually resolvable from
-    # the cache that WhisperX/faster-whisper will use later, without network access.
     cached = snapshot_download(
         repo_id,
         allow_patterns=ALLOW_PATTERNS,
@@ -99,15 +158,21 @@ def download(model: str) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 1:
-        log("Aufruf: python -m whisperx_studio.model_download <tiny|base|small|medium|large-v3>")
-        return 2
     try:
-        download(args[0])
-        return 0
+        if len(args) == 1 and args[0] == "--status":
+            log(json.dumps(model_statuses(), ensure_ascii=False))
+            return 0
+        if len(args) == 2 and args[0] == "--remove":
+            remove(args[1])
+            return 0
+        if len(args) == 1:
+            download(args[0])
+            return 0
+        log("Aufruf: python -m whisperx_studio.model_download <tiny|base|small|medium|large-v3> | --remove <modell> | --status")
+        return 2
     except Exception as exc:
-        log(f"Whisper-Download fehlgeschlagen · {type(exc).__name__}: {exc}")
-        log("Diagnose: Internetverbindung, Proxy/Firewall/Virenscanner und freien Speicherplatz prüfen; danach kann der Download erneut gestartet werden.")
+        log(f"Whisper-Modellverwaltung fehlgeschlagen · {type(exc).__name__}: {exc}")
+        log("Diagnose: Internetverbindung, Proxy/Firewall/Virenscanner und freien Speicherplatz prüfen; bei einem beschädigten Cache das Modell in der Einrichtung entfernen und erneut laden.")
         traceback.print_exc()
         return 1
 
