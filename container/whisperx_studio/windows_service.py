@@ -11,7 +11,9 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
+import threading
 
 from . import core
 
@@ -53,6 +55,89 @@ class FinalizedRecorder:
 
 
 class WindowsService(base.DesktopService):
+    @staticmethod
+    def cli_command(*args):
+        if base.CLI.suffix.lower() == ".py":
+            return [sys.executable, str(base.CLI), *args]
+        return [str(base.CLI), *args]
+
+    @staticmethod
+    def stop_process(proc):
+        if not proc or proc.poll() is not None:
+            return
+        if os.name == "nt":
+            # Kill the complete worker tree. WhisperX may have spawned model
+            # workers; leaving those alive keeps VRAM and file handles locked.
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            subprocess.run(
+                ["taskkill.exe", "/PID", str(proc.pid), "/T", "/F"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=flags,
+                check=False,
+            )
+            return
+        return base.DesktopService.stop_process(proc)
+
+    def run_process(self, command, cancel, on_line=None, secret=None):
+        if os.name != "nt":
+            return super().run_process(command, cancel, on_line, secret)
+        if cancel.is_set() or self.closed:
+            raise InterruptedError()
+        proc = subprocess.Popen(
+            command,
+            cwd=str(base.ROOT),
+            stdin=subprocess.PIPE if secret is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            bufsize=1,
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
+        self.proc = proc
+        finished = threading.Event()
+
+        def watch():
+            while not finished.wait(0.1):
+                if cancel.is_set() or self.closed:
+                    self.stop_process(proc)
+                    return
+
+        threading.Thread(target=watch, daemon=True).start()
+        try:
+            if secret is not None:
+                proc.stdin.write(secret)
+                proc.stdin.close()
+            for line in proc.stdout:
+                if on_line:
+                    on_line(line)
+                else:
+                    self.log(line)
+            code = proc.wait()
+        finally:
+            finished.set()
+            if proc.poll() is None:
+                self.stop_process(proc)
+                try:
+                    proc.wait(timeout=4)
+                except subprocess.TimeoutExpired:
+                    self.stop_process(proc)
+                    proc.wait()
+            for stream in (proc.stdin, proc.stdout):
+                if stream:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
+            if self.proc is proc:
+                self.proc = None
+        if cancel.is_set():
+            raise InterruptedError()
+        if code:
+            raise RuntimeError("Verarbeitung fehlgeschlagen. Details im Aktivitätsprotokoll.")
+
     def validate_project_paths(self, project):
         root = core.DATA.resolve()
         for name in ("source", "preview", "directory"):
@@ -92,6 +177,46 @@ class WindowsService(base.DesktopService):
             {k: v for k, v in values.items() if k != "microphone"}, False
         )
 
+    def start_live(self, path):
+        out = Path.home() / "Dokumente/Transkripte" / (path.stem + "_live")
+        out.mkdir(parents=True, exist_ok=True)
+        self.live_stop = out / "stop.signal"
+        self.live_stop.unlink(missing_ok=True)
+        command = self.cli_command(
+            "--live", "--audio", str(path), "--output", str(out),
+            "--stop-file", str(self.live_stop), "--language", self.settings["language"]
+        )
+        kwargs = {
+            "cwd": str(base.ROOT),
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "errors": "replace",
+        }
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        else:
+            kwargs["start_new_session"] = True
+        self.live_proc = subprocess.Popen(command, **kwargs)
+        live_proc = self.live_proc
+
+        def live_reader():
+            for line in live_proc.stdout:
+                try:
+                    event = json.loads(line)
+                    if event.get("type") == "partial":
+                        self.live_segments.append(
+                            {k: event[k] for k in ("start", "end", "text", "words") if k in event}
+                        )
+                        self.emit("live", event)
+                    elif event.get("type") == "error":
+                        self.log(event.get("message", "Live-Fehler"))
+                except (ValueError, TypeError, AttributeError):
+                    self.log(line)
+
+        self.live_reader_thread = threading.Thread(target=live_reader, daemon=True)
+        self.live_reader_thread.start()
+
     def transcribe_work(self, cancel):
         # Free LLM VRAM before loading WhisperX when Ollama is available. Native
         # transcription must remain usable when Ollama was deliberately skipped.
@@ -105,7 +230,42 @@ class WindowsService(base.DesktopService):
             raise
         except Exception as exc:
             self.log("Ollama ist nicht aktiv; Transkription läuft ohne Auswertungsmodell. " + str(exc))
-        super().transcribe_work(cancel)
+
+        self.require_project()
+        settings = dict(self.settings)
+        self.status = "Audiofassung vorbereiten …"
+        self.push()
+        working = self.doc.render(Path(self.project["directory"]) / "working.wav", cancel=cancel)
+        out = Path.home() / "Dokumente/Transkripte" / (
+            "Studio_" + base.dt.datetime.now().strftime("%Y%m%d-%H%M%S-") + base.uuid.uuid4().hex[:5]
+        )
+        cmd = self.cli_command(
+            str(working), "--model", settings["asr_model"], "--compute_type", "int8",
+            "--batch_size", "4", "--vad_method", "silero", "--output_dir", str(out)
+        )
+        if settings["device"] == "auto":
+            cmd.append("--studio-auto-device")
+        else:
+            cmd += ["--device", "cuda" if settings["device"] == "gpu" else "cpu"]
+        if settings["language"] != "auto":
+            cmd += ["--language", settings["language"]]
+        if settings["diarize"]:
+            cmd += ["--diarize", "--max_speakers", "15" if settings["speaker_count"] == "auto" else str(settings["speaker_count"])]
+            if settings["speaker_count"] != "auto":
+                cmd += ["--min_speakers", str(settings["speaker_count"])]
+        self.status = "WhisperX transkribiert die Aufnahme …"
+        self.push()
+        self.run_process(cmd, cancel)
+        files = sorted(out.glob("*.json"))
+        if not files:
+            raise ValueError("WhisperX hat kein JSON-Transkript erzeugt.")
+        candidate = base.copy.deepcopy(self.project)
+        candidate["segments"] = base.transcript_segments(json.loads(files[0].read_text(encoding="utf-8")))
+        candidate.pop("preliminary", None)
+        if cancel.is_set():
+            raise InterruptedError()
+        self.commit_project(candidate)
+        self.status = f"Transkript fertig · {len(self.project['segments'])} Abschnitte."
 
     def command(self, action, data):
         if action == "open_project":
@@ -113,9 +273,7 @@ class WindowsService(base.DesktopService):
             self.save()
             path = Path(data.get("path", "")).resolve()
             if not path.is_relative_to(core.DATA.resolve()):
-                raise ValueError(
-                    "Diese Projektdatei liegt außerhalb des Arbeitsbereichs."
-                )
+                raise ValueError("Diese Projektdatei liegt außerhalb des Arbeitsbereichs.")
 
             def load(cancel):
                 project = core.load_project(path)
@@ -136,11 +294,7 @@ class WindowsService(base.DesktopService):
             self.save()
             path = Path(data["path"]).resolve()
             root = (core.DATA / "recordings").resolve()
-            if (
-                not path.is_relative_to(root)
-                or not path.is_file()
-                or path.suffix != ".wav"
-            ):
+            if not path.is_relative_to(root) or not path.is_file() or path.suffix != ".wav":
                 raise ValueError("Ungültige lokale Aufnahmedatei.")
             self.record_proc = FinalizedRecorder()
             self.record_path, self.record_log = path, None
@@ -160,9 +314,7 @@ class WindowsService(base.DesktopService):
                 raise ValueError("Bitte Gemma oder Qwen aus der Modellauswahl wählen.")
             executable = find_ollama()
             if not executable:
-                raise ValueError(
-                    "Ollama ist nicht installiert. In der Einrichtung kann es optional für Protokolle und Auswertungen installiert werden."
-                )
+                raise ValueError("Ollama ist nicht installiert. In der Einrichtung kann es optional für Protokolle und Auswertungen installiert werden.")
 
             def download(cancel):
                 self.status = "Modell wird lokal heruntergeladen: " + model
@@ -178,23 +330,22 @@ class WindowsService(base.DesktopService):
             if model not in ("tiny", "base", "small", "medium", "large-v3"):
                 raise ValueError("Ungültiges Whisper-Modell.")
             code = "from faster_whisper.utils import download_model; import sys; print(download_model(sys.argv[1]),flush=True)"
-            self.start_job(
-                "Whisper-Modell herunterladen",
-                lambda cancel: self.run_process(
-                    [sys.executable, "-c", code, model], cancel
-                ),
-            )
+            self.start_job("Whisper-Modell herunterladen", lambda cancel: self.run_process([sys.executable, "-c", code, model], cancel))
+            return True
+        if action == "setup_speakers" and base.CLI.suffix.lower() == ".py":
+            secret = str(data.get("token", "")).strip()
+            if not secret.startswith("hf_"):
+                raise ValueError("Bitte einen gültigen Hugging-Face-Read-Token eingeben.")
+            code = "import runpy,sys; from huggingface_hub import login; login(token=sys.stdin.read().strip(),add_to_git_credential=False); script=sys.argv[1]; sys.argv=[script,'--setup-speakers']; runpy.run_path(script,run_name='__main__')"
+            self.status = "Sprechermodell wird eingerichtet …"
+            self.start_job("Sprecher einrichten", lambda cancel: self.run_process([sys.executable, "-c", code, str(base.CLI)], cancel, secret=secret))
             return True
         if action in ("record_start",):
-            raise ValueError(
-                "Die Aufnahme wird durch die Windows-Oberfläche gestartet."
-            )
+            raise ValueError("Die Aufnahme wird durch die Windows-Oberfläche gestartet.")
         if action in ("load_audio", "open_project", "import_transcript"):
             path = Path(data.get("path", "")).resolve()
             if not path.is_relative_to(core.DATA.resolve()):
-                raise ValueError(
-                    "Diese Datei liegt außerhalb des lokalen Arbeitsbereichs."
-                )
+                raise ValueError("Diese Datei liegt außerhalb des lokalen Arbeitsbereichs.")
         return super().command(action, data)
 
 
@@ -204,11 +355,7 @@ def serve(service):
             request = {}
             try:
                 parsed = json.loads(line)
-                if (
-                    not isinstance(parsed, dict)
-                    or not isinstance(parsed.get("action"), str)
-                    or not isinstance(parsed.get("data") or {}, dict)
-                ):
+                if not isinstance(parsed, dict) or not isinstance(parsed.get("action"), str) or not isinstance(parsed.get("data") or {}, dict):
                     raise ValueError("Ungültige Desktop-Anfrage.")
                 request = parsed
                 value = service.command(request["action"], request.get("data") or {})
