@@ -5,8 +5,8 @@ whisperx==3.8.6
 ctranslate2==4.8.4
 faster-whisper==1.2.1
 pyannote.audio==4.0.7
+# pyannote declares TorchCodec for file decoding. WhisperX 3.8.6 feeds pyannote
+# an in-memory waveform, so TorchCodec loading is not a Windows readiness gate.
 torchcodec==0.7.0
-# PyAV's Windows wheel bundles the shared FFmpeg DLLs TorchCodec needs.
-av==19.0.2
 # WhisperX itself shells out to ffmpeg; this wheel supplies a private executable.
 imageio-ffmpeg==0.6.0
