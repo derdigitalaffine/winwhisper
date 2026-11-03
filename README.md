@@ -64,6 +64,19 @@ Alternativ lässt sich das Setup auf Windows 11 x64 lokal bauen:
 .\Windows-Setup-bauen.cmd
 ```
 
+**Ohne vorheriges Klonen:** Öffne PowerShell im Zielordner und führe diese einzelne
+Zeile aus. Sie lädt das Skript direkt aus dem Repository, lädt den Quellcode temporär
+herunter, baut das Setup und legt Setup samt Prüfsumme im aktuellen Ordner ab:
+
+```powershell
+irm https://raw.githubusercontent.com/derdigitalaffine/winwhisper/main/Build-WinWhisper.ps1 | iex
+```
+
+Das Skript benötigt Windows x64 und eine Internetverbindung. Wenn Node.js 22 oder neuer
+fehlt, versucht es die Installation über winget; dabei kann ein Installationsdialog
+erscheinen. Der temporäre Quellcode und die Build-Abhängigkeiten werden nach dem Build
+entfernt. Das Skript führt keine Tests aus.
+
 Voraussetzungen: Node.js 22 oder neuer, npm, Windows x64 und eine Internetverbindung für
 die Build-Abhängigkeiten. Das Ergebnis liegt in `dist/`. Die Setup-Datei ist ohne ein
 Signaturzertifikat unsigniert.
