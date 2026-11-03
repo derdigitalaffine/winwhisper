@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const api=window.studio,$=id=>document.getElementById(id);if(!api)return;
-  let working=false,stateBusy=false,lastStatus={};
+  let working=false,stateBusy=false,lastStatus={},activeWhisperStatus='';
 
   const body=document.querySelector('#runtimeDialog .setup-body');
   body.innerHTML=`
@@ -54,7 +54,7 @@
     lastStatus=status||{};
     const mode=status.mode||'native';runtimeSelect.value=mode;
     nativeSection.hidden=mode!=='native';dockerSection.hidden=mode!=='docker';
-    $('setupSummary').textContent=status.ready?`${status.runtimeLabel||'Lokale Umgebung'} bereit.`:(status.error||'Lokale Umgebung muss noch eingerichtet werden.');
+    $('setupSummary').textContent=activeWhisperStatus||(status.ready?`${status.runtimeLabel||'Lokale Umgebung'} bereit.`:(status.error||'Lokale Umgebung muss noch eingerichtet werden.'));
     $('setupDocker').textContent=mode==='native'?'Laufzeit · Windows nativ':(status.docker?(status.linux?'Docker · Linux bereit':'Docker · Linux-Container fehlen'):'Docker · nicht bereit');
     $('setupEngine').textContent=(status.engine||status.image)?'WhisperX · installiert':'WhisperX · noch nicht installiert';
     $('setupDevice').textContent=status.gpu?'Verarbeitung · NVIDIA-GPU':'Verarbeitung · CPU / noch ungeprüft';
@@ -98,6 +98,8 @@
         const model=asrModel.value;
         logDetails.open=true;
         log(`Whisper-${model}-Download wird gestartet. Der Cache wird zuerst geprüft; danach folgen Download und lokale Verifikation.`);
+        await api.command('settings',{asr_model:model});
+        log(`Whisper-${model} ist jetzt als Transkriptionsmodell ausgewählt.`);
         await api.command('warmup_asr',{model});
         log(`Whisper-${model} läuft im Hintergrund. Alle Fortschritts- und Fehlermeldungen erscheinen hier.`);
       }
@@ -109,13 +111,19 @@
     if(event.type==='setup_log')log(event.data);
     else if(event.type==='setup_status'){display(event.data);if(!event.data.ready)show();}
     else if(event.type==='log'&&$('runtimeDialog').open)log(event.data);
+    else if(event.type==='error'&&$('runtimeDialog').open){log('Fehler: '+event.data);$('setupSummary').textContent='Fehler: '+event.data;logDetails.open=true;}
     else if(event.type==='state'){
       stateBusy=!!(event.data.busy||event.data.recording);
       if(event.data.busy&&event.data.operation==='Whisper-Modell herunterladen'){
-        $('setupSummary').textContent=event.data.status||'Whisper-Modell wird heruntergeladen …';
+        activeWhisperStatus=event.data.status||'Whisper-Modell wird heruntergeladen …';
+        $('setupSummary').textContent=activeWhisperStatus;
         logDetails.open=true;
-      }else if(!event.data.busy&&event.data.status&&/Whisper .*lokal bereit/.test(event.data.status)){
-        $('setupSummary').textContent=event.data.status;
+      }else if(!event.data.busy){
+        activeWhisperStatus='';
+        if(event.data.status&&(/Whisper .*lokal bereit/.test(event.data.status)||event.data.status.startsWith('Fehler:'))){
+          $('setupSummary').textContent=event.data.status;
+          if(event.data.status.startsWith('Fehler:'))logDetails.open=true;
+        }
       }
       updateDisabled();
     }
