@@ -8,5 +8,5 @@ test('setup exposes Tiny and verbose Whisper download diagnostics',()=>{
   assert(source.includes('Tiny · kleinster Download, sehr schnell'));
   assert(source.includes('Whisper-Modell laden'));
   assert(source.includes('Downloadfortschritt'));
-  assert(source.includes("'whisperx_studio.model_download'"));
+  assert(source.includes("api.command('warmup_asr',{model})"));
 });
