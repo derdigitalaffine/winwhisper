@@ -1,9 +1,12 @@
 """Subprocess boundary makes model loading/generation immediately cancellable."""
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
+from . import analysis
+analysis.OLLAMA = os.environ.get("WINWHISPER_OLLAMA_URL", analysis.OLLAMA)
 from .analysis import generate, OllamaClient
 from .core import atomic_json
 
