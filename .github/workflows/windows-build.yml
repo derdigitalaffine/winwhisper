@@ -30,3 +30,40 @@ jobs:
             dist/*Setup*.exe
             dist/*.sha256
           if-no-files-found: error
+
+  native-engine-smoke:
+    if: github.event_name != 'push'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: container/requirements-windows-py312.txt
+      - name: Create isolated native runtime
+        shell: pwsh
+        run: |
+          python -m venv .native-smoke
+          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check --upgrade pip
+          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check --index-url https://download.pytorch.org/whl/cpu torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
+          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check -r container\requirements-windows-py312.txt
+      - name: Exercise native entry, FFmpeg and TorchCodec
+        shell: pwsh
+        run: |
+          $env:WINWHISPER_DATA = Join-Path $PWD '.native-smoke-data'
+          $env:WINWHISPER_ENGINE = Join-Path $PWD 'container'
+          $env:WINWHISPER_CLI = Join-Path $PWD 'container\whisperx_cli.py'
+          $env:WINWHISPER_PLATFORM = 'windows-native'
+          $env:WINWHISPER_OLLAMA = ''
+          $env:PYTHONPATH = Join-Path $PWD 'container'
+          New-Item -ItemType Directory -Force -Path $env:WINWHISPER_DATA | Out-Null
+          '{"id":1,"action":"shutdown","data":{}}' | .\.native-smoke\Scripts\python.exe container\native_entry.py
+          .\.native-smoke\Scripts\python.exe -c "import imageio_ffmpeg, subprocess; exe=imageio_ffmpeg.get_ffmpeg_exe(); subprocess.run([exe,'-version'],check=True,stdout=subprocess.DEVNULL); import torch,ctranslate2,faster_whisper,whisperx; from pyannote.audio import Pipeline; import whisperx.diarize; print('native imports ok')"
+          .\.native-smoke\Scripts\python.exe -c "import wave,tempfile,pathlib; p=pathlib.Path(tempfile.gettempdir())/'winwhisper-torchcodec.wav'; w=wave.open(str(p),'wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b'\0\0'*1600); w.close(); from torchcodec.decoders import AudioDecoder; d=AudioDecoder(str(p)); print('torchcodec audio decoder ok')"
+      - name: Run Windows service tests with native dependencies
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = Join-Path $PWD 'container'
+          .\.native-smoke\Scripts\python.exe tests\test_windows_service.py
