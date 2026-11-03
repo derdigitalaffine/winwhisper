@@ -69,6 +69,16 @@ class ModelDownloadTests(unittest.TestCase):
                 self.assertTrue(model_download.remove("small"))
                 self.assertFalse(root.exists())
 
+    def test_permission_error_names_broken_file_and_recovery_action(self):
+        denied = PermissionError(13, "Access denied", r"C:\\cache\\vocabulary.txt")
+        with patch.object(model_download, "snapshot_download", side_effect=denied):
+            with self.assertRaises(RuntimeError) as raised:
+                model_download.download("tiny")
+        message = str(raised.exception)
+        self.assertIn("vocabulary.txt", message)
+        self.assertIn("entfernen", message)
+        self.assertIn("symlink-freien Windows-Cache", message)
+
     def test_rejects_unknown_model(self):
         with self.assertRaises(ValueError):
             model_download.download("tiny; shell")
