@@ -37,15 +37,15 @@ class Backend extends EventEmitter {
     });
     child.stderr.on('data',chunk=>this.emit('event',{type:'log',data:chunk.toString()}));
     child.stdin.on('error',down);child.on('error',down);
-    child.on('exit',(code,signal)=>down(new Error(`Lokaler Container beendet (${signal||code}). Über „Verbindung prüfen“ neu starten.`)));
+    child.on('exit',(code,signal)=>down(new Error(`Lokaler Hintergrunddienst beendet (${signal||code}). Über „Verbindung prüfen“ neu starten.`)));
   }
   request(action,data={},timeout=30000){
     const child=this.child;
-    if(!child||!child.stdin.writable||child.stdin.destroyed)return Promise.reject(new Error('Lokaler Container nicht verbunden. Bitte die Einrichtung öffnen.'));
+    if(!child||!child.stdin.writable||child.stdin.destroyed)return Promise.reject(new Error('Lokaler Hintergrunddienst nicht verbunden. Bitte die Einrichtung öffnen.'));
     if(this.pending.size>=64)return Promise.reject(new Error('Zu viele gleichzeitige Anfragen.'));
     return new Promise((resolve,reject)=>{
       const id=++this.nextID;
-      const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error('Der lokale Container antwortet nicht.'));child.stdin.end();child.kill();},timeout);
+      const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error('Der lokale Hintergrunddienst antwortet nicht.'));child.stdin.end();child.kill();},timeout);
       const failed=error=>{if(!error)return;const item=this.pending.get(id);if(item){clearTimeout(timer);this.pending.delete(id);reject(error);}};
       this.pending.set(id,{resolve,reject,timer});
       try{child.stdin.write(JSON.stringify({id,action,data})+'\n',failed);}catch(error){failed(error);}
