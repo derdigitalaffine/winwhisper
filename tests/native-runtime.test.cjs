@@ -34,9 +34,11 @@ test('native runtime is ready from its managed venv and starts Python without a 
 });
 
 test('native runtime stays unavailable when the managed environment is missing and validates device input',async t=>{
-  const f=fixture(t);const rt=new NativeWindowsRuntime({workspace:f.workspace,resources:f.resources,runner:async()=>{throw new Error('missing');},platform:'win32'});
+  const f=fixture(t);const calls=[];const rt=new NativeWindowsRuntime({workspace:f.workspace,resources:f.resources,runner:async(command,args)=>{calls.push({command,args});throw new Error('missing');},platform:'win32'});
   const status=await rt.inspect();assert.equal(status.ready,false);assert.equal(status.python,false);assert.match(status.error,/noch nicht eingerichtet/);
   await assert.rejects(rt.prepare({device:'shell'}),/Ungültiger/);
+  await assert.rejects(rt.prepare({device:'cpu'}),/Setup-Routine|Einrichtungsroutine|nicht automatisch/);
+  assert.equal(calls.some(c=>String(c.command).toLowerCase().includes('winget')||c.args?.[0]==='winget.exe'),false);
 });
 
 test('native runtime cannot be selected on non-Windows platforms',async t=>{

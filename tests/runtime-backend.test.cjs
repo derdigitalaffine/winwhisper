@@ -18,19 +18,20 @@ test('runtime refuses Windows containers and reports missing Docker',async t=>{
   assert.equal((await rt.inspect()).ready,false);await assert.rejects(rt.start(),/Linux/);
   rt.run=async()=>{throw new Error('not found');};assert.equal((await rt.inspect()).docker,false);
 });
-test('automatic GPU failure falls back to CPU; required GPU fails',async t=>{
+test('docker prepare requires the external setup routine and rejects invalid device selection',async t=>{
   const calls=[];const rt=new DockerRuntime({workspace:temp(t),resources:temp(t),runner:async(_cmd,args)=>{
-    calls.push(args);if(args[0]==='info')return JSON.stringify({OSType:'linux'});if(args.includes('--gpus'))throw new Error('no CUDA');return 'ok';}});
-  await rt.prepare({device:'auto'});assert.equal(rt.gpu,false);assert.equal(JSON.parse(fs.readFileSync(rt.configFile)).gpu,false);
-  await assert.rejects(rt.prepare({device:'gpu'}),/CUDA/);assert.equal(rt.flight,null);
+    calls.push(args);if(args[0]==='info')return JSON.stringify({OSType:'linux'});if(args[0]==='image')throw new Error('missing');return 'ok';}});
+  await assert.rejects(rt.prepare({device:'auto'}),/Docker-Umgebung ist noch nicht eingerichtet|Setup-Routine|WSL \/ Docker einrichten/);assert.equal(rt.flight,null);
+  await assert.rejects(rt.prepare({device:'gpu'}),/Docker-Umgebung ist noch nicht eingerichtet|Setup-Routine|WSL \/ Docker einrichten/);assert.equal(rt.flight,null);
   await assert.rejects(rt.prepare({device:'shell;rm'}),/Ungültiger/);
 });
-test('prepare coalesces simultaneous requests and builds missing image once',async t=>{
-  let image=false,builds=0;const rt=new DockerRuntime({workspace:temp(t),resources:temp(t),runner:async(_cmd,args)=>{
+test('prepare coalesces simultaneous requests until external setup has completed',async t=>{
+  let image=false,inspects=0;const rt=new DockerRuntime({workspace:temp(t),resources:temp(t),runner:async(_cmd,args)=>{
     if(args[0]==='info')return JSON.stringify({OSType:'linux'});
-    if(args[0]==='image'&&!image)throw new Error('missing');
-    if(args[0]==='build'){builds++;await new Promise(r=>setTimeout(r,10));image=true;}return 'ok';}});
-  await Promise.all([rt.prepare({device:'cpu'}),rt.prepare({device:'cpu'})]);assert.equal(builds,1);assert.equal((await rt.inspect()).ready,true);
+    if(args[0]==='image'){inspects++;if(!image)throw new Error('missing');return 'ok';}
+    return 'ok';}});
+  await Promise.allSettled([rt.prepare({device:'cpu'}),rt.prepare({device:'cpu'})]);
+  assert.equal(inspects,1);assert.equal((await rt.inspect()).ready,false);assert.equal(rt.flight,null);
 });
 test('unowned container is never removed or stopped',async t=>{
   const args=[];const rt=new DockerRuntime({workspace:temp(t),resources:temp(t),runner:async(_cmd,a)=>{args.push(a);return 'another-owner';}});

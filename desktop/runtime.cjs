@@ -140,35 +140,12 @@ class NativeWindowsRuntime extends EventEmitter{
     this.flight=this._prepare(device).finally(()=>{this.flight=null;});return this.flight;
   }
   async _prepare(device){
+    if(!['auto','cpu','gpu'].includes(device))throw new Error('Ungültiger Gerätemodus.');
     if(!fs.existsSync(this.requirements)||!fs.existsSync(this.entry))throw new Error('Native Engine-Dateien fehlen im Installationspaket.');
-    await this._ensureVenv();
-    const hasNvidia=await this._hasNvidia();
-    const desiredFlavor=device==='cpu'?'cpu':(device==='gpu'||hasNvidia?'cu128':'cpu');
-    const config=this._config();
-    this.health=null;
-    const currentHealth=config.version===NATIVE_ENGINE_VERSION&&config.flavor===desiredFlavor?await this._healthCheck():{ok:false};
-    if(!currentHealth.ok){
-      this.log(`WhisperX wird für Windows eingerichtet · ${desiredFlavor==='cu128'?'NVIDIA/CUDA 12.8':'CPU'}. Der erste Download kann mehrere GB umfassen.`);
-      const index=desiredFlavor==='cu128'?'https://download.pytorch.org/whl/cu128':'https://download.pytorch.org/whl/cpu';
-      await this.run(this.python,['-m','pip','install','--disable-pip-version-check','--no-input','--upgrade','pip'],{timeout:10*60*1000,cwd:this.enginePath,env:this._env(),onLine:t=>this.log(t)});
-      await this.run(this.python,['-m','pip','install','--disable-pip-version-check','--no-input','--upgrade','--index-url',index,'torch==2.8.0','torchaudio==2.8.0','torchvision==0.23.0'],{timeout:60*60*1000,cwd:this.enginePath,env:this._env(),onLine:t=>this.log(t)});
-      await this.run(this.python,['-m','pip','install','--disable-pip-version-check','--no-input','--upgrade','-r',this.requirements],{timeout:60*60*1000,cwd:this.enginePath,env:this._env(),onLine:t=>this.log(t)});
-      const health=await this._healthCheck();if(!health.ok)throw new Error('WhisperX wurde installiert, der Selbsttest ist aber fehlgeschlagen: '+health.error);
+    const info=await this.inspect();
+    if(!info.ready){
+      throw new Error('Die WhisperX-Umgebung ist noch nicht eingerichtet. Bitte die Setup-Routine „WhisperX einrichten“ ausführen, bevor die Anwendung die Laufzeit startet.');
     }
-    let gpu=false;
-    if(desiredFlavor==='cu128'&&device!=='cpu'){
-      try{
-        const code='import torch,ctranslate2; assert torch.cuda.is_available(), "PyTorch CUDA nicht verfügbar"; assert ctranslate2.get_cuda_device_count()>0, "CTranslate2 CUDA nicht verfügbar"; print(torch.cuda.get_device_name(0))';
-        const name=await this.run(this.python,['-c',code],{timeout:90000,cwd:this.enginePath,env:this._env()});
-        gpu=true;this.log('NVIDIA-GPU bereit: '+name.trim());
-      }catch(error){
-        if(device==='gpu')throw new Error('NVIDIA-GPU wurde angefordert, aber der CUDA-Selbsttest ist fehlgeschlagen. CPU funktioniert weiterhin. '+error.message.slice(-1200));
-        this.log('GPU-Selbsttest nicht erfolgreich; WinWhisper verwendet stabil die CPU. '+error.message.slice(-1000));
-      }
-    }
-    atomicJSON(this.configFile,{version:NATIVE_ENGINE_VERSION,flavor:desiredFlavor,gpu,updated:new Date().toISOString()});
-    this.health={ok:true};
-    this.log(gpu?'Native Windows-Laufzeit bereit · NVIDIA-GPU':'Native Windows-Laufzeit bereit · CPU');
     return this.inspect();
   }
   async start(){
@@ -213,14 +190,15 @@ class DockerRuntime extends EventEmitter{
     if(this.flight)return this.flight;this.flight=this._prepare(device).finally(()=>{this.flight=null;});return this.flight;
   }
   async _prepare(device){
-    const status=await this.inspect();if(!status.docker||!status.linux)throw new Error(status.error);
-    if(!status.image){this.log('WhisperX und Ollama werden im Docker-Container eingerichtet. Der erste Download kann mehrere GB umfassen.');await this.run(this.docker,['build','--pull','--tag',this.image,this.enginePath],{timeout:60*60*1000,onLine:t=>this.log(t)});}
-    this.gpu=false;
-    if(device!=='cpu'){
-      try{await this.run(this.docker,['run','--rm','--network','none','--gpus','all','--entrypoint','python3',this.image,'-c','import torch; assert torch.cuda.is_available(), "CUDA nicht verfügbar"; print(torch.cuda.get_device_name(0))'],{timeout:120000,onLine:t=>this.log(t)});this.gpu=true;}
-      catch(error){if(device==='gpu')throw error;this.log('GPU-Test nicht erfolgreich. CPU-Betrieb wird verwendet. '+error.message.slice(-500));}
+    if(!['auto','cpu','gpu'].includes(device))throw new Error('Ungültiger Gerätemodus.');
+    const status=await this.inspect();
+    if(!status.docker||!status.linux){
+      throw new Error(status.error||'Docker / WSL 2 muss extern über die Setup-Routine bereit gemacht werden.');
     }
-    atomicJSON(this.configFile,{version:1,image:this.image,gpu:this.gpu});this.log(this.gpu?'Docker-Container bereit · NVIDIA-GPU':'Docker-Container bereit · CPU');return this.inspect();
+    if(!status.image){
+      throw new Error('Die Docker-Umgebung ist noch nicht eingerichtet. Bitte zuerst die Setup-Routine „WSL / Docker einrichten“ ausführen.');
+    }
+    return this.inspect();
   }
   async removeOwned(){let owner;try{owner=await this.run(this.docker,['inspect','--format','{{index .Config.Labels "io.winwhisper.owner"}}',this.name],{timeout:10000});}catch{return;}if(owner.trim()!==this.owner)throw new Error('Ein fremder Container verwendet denselben Namen. Er wird nicht beendet.');await this.run(this.docker,['rm','--force',this.name],{timeout:20000});}
   async start(){

@@ -129,10 +129,11 @@ async function stopCapture(id){
   return true;
 }
 async function systemAction(action){
-  if(!['wsl','docker','start-docker','ollama'].includes(action))throw new Error('Unbekannter Einrichtungsschritt.');
+  if(!['wsl','docker','start-docker','ollama','whisperx'].includes(action))throw new Error('Unbekannter Einrichtungsschritt.');
   if(process.platform!=='win32')throw new Error('Dieser Einrichtungsschritt ist nur unter Windows verfügbar.');
   const script=path.join(resourceRoot(),'scripts','Initialize-System.ps1');
-  return run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',script,'-Action',action],{timeout:30*60*1000,onLine:data=>send({type:'setup_log',data})});
+  const args=['-NoProfile','-ExecutionPolicy','Bypass','-File',script,'-Action',action,'-Workspace',runtime.workspace,'-Resources',resourceRoot()];
+  return run('powershell.exe',args,{timeout:30*60*1000,onLine:data=>send({type:'setup_log',data})});
 }
 async function finishClose(){
   if(quitting)return;quitting=true;clearTimeout(closeTimer);

@@ -106,8 +106,15 @@
       if(action==='refresh')return refresh();
       if(action==='prepare'){
         const mode=runtimeSelect.value,device=mode==='docker'?dockerMode.value:$('setupMode').value;
-        display(await api.setup('prepare',{device}));
-        log(mode==='native'?'Native Windows-Laufzeit eingerichtet und gestartet.':'Docker-Laufzeit eingerichtet und gestartet.');
+        if(mode==='native'){
+          log('WhisperX-Setup wird in der externen Setup-Routine gestartet. Bitte den installierten Python-/WhisperX-Ordner nicht parallel im App-Dialog ändern.');
+          await api.setup('system',{action:'whisperx'});
+          log('WhisperX-Setup abgeschlossen. Die Umgebung wird geprüft und anschließend gestartet.');
+        } else {
+          await api.setup('system',{action:'docker'});
+          log('Docker / WSL 2-Setup gestartet. Danach kann die Docker-Laufzeit erneut geprüft werden.');
+        }
+        display(await api.setup('status'));
       }else if(action==='start'){display(await api.setup('start'));log('Lokaler Hintergrunddienst gestartet.');}
       else if(action==='restart'){if((await window.StudioActions.flushEditor())===false)return;display(await api.setup('restart'));log('Lokale Umgebung neu gestartet und Projekt wiederhergestellt.');}
       else if(action==='workspace')await api.setup('workspace');
