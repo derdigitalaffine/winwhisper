@@ -44,7 +44,10 @@ sollten vor der Verwendung geprüft werden.
    Windows-Anwendung für den aktuellen Benutzer installiert werden.
 
 Die native Laufzeit installiert WhisperX in einer isolierten virtuellen Python-Umgebung
-innerhalb des WinWhisper-Arbeitsordners. FFmpeg wird über ein Python-Paket bereitgestellt;
+innerhalb des WinWhisper-Arbeitsordners. Eine abgebrochene Einrichtung lässt sich über
+**Windows-Laufzeit einrichten / reparieren** erneut ausführen; erst eine vollständig
+installierte und geprüfte Umgebung wird als betriebsbereit markiert. FFmpeg wird über
+ein Python-Paket bereitgestellt;
 eine systemweite FFmpeg-Installation ist nicht erforderlich. Sprachmodelle werden erst bei
 Bedarf lokal heruntergeladen. Die erste Einrichtung benötigt mehrere Gigabyte freien
 Speicher und eine Internetverbindung.
@@ -59,7 +62,9 @@ einen fehlgeschlagenen GPU-Test dagegen als Fehler. Eine NVIDIA-GPU ist nicht er
 Der bisherige Docker-Pfad bleibt verfügbar, ist aber nicht mehr der Standard. Im
 Einrichtungsassistenten kann unter **Lokale Laufzeit** auf `Docker / WSL 2 · erweitert`
 gewechselt werden. Dieser Modus benötigt weiterhin WSL 2, Docker Desktop und Linux-
-Container. Er ist als Rückfalloption gedacht, falls die native Windows-Laufzeit auf einem
+Container. Nachdem Docker Desktop gestartet wurde, baut **Docker-Laufzeit einrichten**
+das WhisperX-/Ollama-Image bei Bedarf und prüft die gewählte CPU-/GPU-Konfiguration.
+Er ist als Rückfalloption gedacht, falls die native Windows-Laufzeit auf einem
 bestimmten Rechner nicht eingesetzt werden kann.
 
 Die Anwendung veröffentlicht in keinem Modus einen Whisper-Port im Windows-Netzwerk.
@@ -117,6 +122,14 @@ Das Windows-Setup lässt sich auf Windows mit `npm run dist:win` erstellen. Die 
 Docker-basierte KI-Engine liegen in `container/`, die Windows-Oberfläche in `desktop/` und
 die Systemeinrichtung unter `scripts/`. Projekt-, Aufnahme- und Modelldaten bleiben im
 lokalen Windows-Arbeitsordner der Anwendung.
+
+## Windows-Kompatibilität (November 2026)
+
+Zielplattform ist **Windows 11 x64**, einschließlich **26H2**. Der CI-Installer wird
+auf `windows-latest` (GitHub-gehosteter Windows-Server-Runner) gebaut und getestet;
+das ist **kein vollständiger Windows-11-26H2-Hardwaretest**. Deshalb gehören
+Mikrofonfreigabe, geschützte Unternehmensrechner, CUDA-Treiber, größere Downloads
+und die tatsächliche Installation auf Windows 11 weiterhin zur Freigabeabnahme.
 
 ## Prüfstand
 
