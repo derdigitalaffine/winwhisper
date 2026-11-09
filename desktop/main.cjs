@@ -221,7 +221,8 @@ else{
       if(action==='system'){
         if(data.action==='whisperx'){
           if(runtime.mode!=='native')throw new Error('WhisperX nativ kann nur im Windows-Modus eingerichtet werden.');
-          if(fileTransfer||lastState?.busy||lastState?.recording||capture||backend.child)throw new Error('Bitte zuerst die laufende Verarbeitung beenden und die Windows-Laufzeit stoppen, bevor sie repariert wird.');
+          if(fileTransfer||lastState?.busy||lastState?.recording||capture)throw new Error('Bitte zuerst die laufende Verarbeitung beenden, bevor die Windows-Laufzeit repariert wird.');
+          if(backend.child)await backend.restart();
         }
         const result=await systemAction(data.action,data);
         if(data.action==='whisperx'){
