@@ -7,7 +7,11 @@ in-memory waveform, so TorchCodec's optional file decoder is not required.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 import subprocess
+import sys
+import tempfile
 import unittest
 
 import imageio_ffmpeg
@@ -46,6 +50,26 @@ class NativeEngineSmokeTests(unittest.TestCase):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+
+    def test_native_cli_help_starts_without_model_downloads(self):
+        # Exercises the separate transcription process. This caught a missing
+        # DLL helper import that the desktop/build smoke previously missed.
+        with tempfile.TemporaryDirectory(prefix="winwhisper-cli-") as data:
+            env = os.environ.copy()
+            env["WINWHISPER_DATA"] = data
+            entry = Path(__file__).resolve().parents[1] / "container" / "whisperx_cli.py"
+            result = subprocess.run(
+                [sys.executable, str(entry), "--help"],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr[-3000:])
+            self.assertIn("--model", result.stdout)
+            self.assertTrue(
+                (Path(data) / "runtime" / "native" / "bin" / "ffmpeg.exe").is_file()
+            )
 
     def test_engine_imports(self):
         import ctranslate2
