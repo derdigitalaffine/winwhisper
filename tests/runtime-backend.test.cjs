@@ -18,20 +18,49 @@ test('runtime refuses Windows containers and reports missing Docker',async t=>{
   assert.equal((await rt.inspect()).ready,false);await assert.rejects(rt.start(),/Linux/);
   rt.run=async()=>{throw new Error('not found');};assert.equal((await rt.inspect()).docker,false);
 });
-test('docker prepare requires the external setup routine and rejects invalid device selection',async t=>{
-  const calls=[];const rt=new DockerRuntime({workspace:temp(t),resources:temp(t),runner:async(_cmd,args)=>{
-    calls.push(args);if(args[0]==='info')return JSON.stringify({OSType:'linux'});if(args[0]==='image')throw new Error('missing');return 'ok';}});
-  await assert.rejects(rt.prepare({device:'auto'}),/Docker-Umgebung ist noch nicht eingerichtet|Setup-Routine|WSL \/ Docker einrichten/);assert.equal(rt.flight,null);
-  await assert.rejects(rt.prepare({device:'gpu'}),/Docker-Umgebung ist noch nicht eingerichtet|Setup-Routine|WSL \/ Docker einrichten/);assert.equal(rt.flight,null);
+test('Docker fallback setup builds a missing engine and stores safe CPU mode',async t=>{
+  const resources=temp(t),engine=path.join(resources,'engine'),workspace=temp(t),calls=[];fs.mkdirSync(engine);fs.writeFileSync(path.join(engine,'Dockerfile'),'FROM scratch\n');
+  let built=false;
+  const rt=new DockerRuntime({workspace,resources,runner:async(_cmd,args)=>{
+    calls.push(args);
+    if(args[0]==='info')return JSON.stringify({OSType:'linux'});
+    if(args[0]==='image'&&!built)throw new Error('image missing');
+    if(args[0]==='build'){built=true;return 'built';}
+    if(args[0]==='run')throw new Error('no NVIDIA runtime');
+    return 'ok';
+  }});
+  const result=await rt.prepare({device:'auto'});
+  assert.equal(result.ready,true);assert.equal(result.gpu,false);
+  const build=calls.find(args=>args[0]==='build');
+  assert(build);assert(build.includes('--file'));assert(build.includes(path.join(engine,'Dockerfile')));
+  assert(calls.some(args=>args[0]==='run'&&args.includes('nvidia-smi')));
+  assert.deepEqual(JSON.parse(fs.readFileSync(rt.configFile,'utf8')),{version:1,gpu:false,device:'auto'});
   await assert.rejects(rt.prepare({device:'shell;rm'}),/Ungültiger/);
 });
-test('prepare coalesces simultaneous requests until external setup has completed',async t=>{
-  let image=false,inspects=0;const rt=new DockerRuntime({workspace:temp(t),resources:temp(t),runner:async(_cmd,args)=>{
+
+test('Docker fallback setup rejects unavailable required GPU without storing invalid mode',async t=>{
+  const resources=temp(t),workspace=temp(t);
+  const rt=new DockerRuntime({workspace,resources,runner:async(_cmd,args)=>{
     if(args[0]==='info')return JSON.stringify({OSType:'linux'});
-    if(args[0]==='image'){inspects++;if(!image)throw new Error('missing');return 'ok';}
-    return 'ok';}});
-  await Promise.allSettled([rt.prepare({device:'cpu'}),rt.prepare({device:'cpu'})]);
-  assert.equal(inspects,1);assert.equal((await rt.inspect()).ready,false);assert.equal(rt.flight,null);
+    if(args[0]==='run')throw new Error('GPU unavailable');
+    return 'ok';
+  }});
+  await assert.rejects(rt.prepare({device:'gpu'}),/NVIDIA-GPU in Docker/);
+  assert.equal(fs.existsSync(rt.configFile),false);
+  assert.equal(rt.flight,null);
+});
+
+test('Docker fallback setup coalesces concurrent preparations into one image build',async t=>{
+  const resources=temp(t),engine=path.join(resources,'engine');fs.mkdirSync(engine);fs.writeFileSync(path.join(engine,'Dockerfile'),'FROM scratch\n');
+  let image=false,builds=0;const rt=new DockerRuntime({workspace:temp(t),resources,runner:async(_cmd,args)=>{
+    if(args[0]==='info')return JSON.stringify({OSType:'linux'});
+    if(args[0]==='image'&&!image)throw new Error('missing');
+    if(args[0]==='build'){builds++;await new Promise(resolve=>setTimeout(resolve,10));image=true;return 'ok';}
+    return 'ok';
+  }});
+  const [a,b]=await Promise.all([rt.prepare({device:'cpu'}),rt.prepare({device:'cpu'})]);
+  assert.equal(a.ready,true);assert.equal(b.ready,true);
+  assert.equal(builds,1);assert.equal(rt.flight,null);
 });
 test('unowned container is never removed or stopped',async t=>{
   const args=[];const rt=new DockerRuntime({workspace:temp(t),resources:temp(t),runner:async(_cmd,a)=>{args.push(a);return 'another-owner';}});
