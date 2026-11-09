@@ -2704,3 +2704,16 @@ button[hidden],
 }
 
 .runtime-dialog{width:min(850px,calc(100vw - 60px));max-height:90vh}.setup-body{max-height:72vh;overflow:auto;padding:24px 30px}.setup-body p{font-size:13px;line-height:1.65;color:var(--muted,#687380)}.setup-body h3{margin:26px 0 10px;font-size:16px}.setup-status{display:grid;gap:8px;padding:16px;background:#edf6f2;border-radius:12px;font-size:13px}.setup-actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.setup-body select{padding:10px;border:1px solid #dce4e1;border-radius:8px;margin-left:10px}.setup-workspace{word-break:break-all}.setup-body .activity-log{max-height:180px}.setup-body details{margin-top:20px}
+
+
+/* Read-only GPU diagnostics in the existing setup dialog. */
+.gpu-diagnostics{margin:22px 0 16px;padding:14px 16px;border:1px solid #d4e2df;border-radius:12px;background:var(--surface,#fff)}
+.gpu-diagnostics>summary{font-size:14px;font-weight:700;cursor:pointer;list-style-position:inside}
+.gpu-diagnostics[open]>summary{margin-bottom:12px}
+.gpu-diag-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:14px 0}
+.gpu-diag-grid section{min-width:0;padding:12px;border:1px solid #e1e9e6;border-radius:10px;background:rgba(220,232,230,.18)}
+.gpu-diag-grid strong{display:block;font-size:13px}
+.gpu-diag-grid p{white-space:pre-wrap;overflow-wrap:anywhere;margin:7px 0 0}
+.gpu-diag-advice{margin-top:10px;font-size:13px}
+.gpu-diagnostics .setup-actions{align-items:center}
+.gpu-diagnostics #gpuUpdated{font-size:12px}
