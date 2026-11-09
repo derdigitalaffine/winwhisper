@@ -73,11 +73,11 @@ class GpuDiagnostics{
     if(docker&&!active.gpu)return {status:"disabled",reason:"Docker wurde ohne NVIDIA-GPU eingerichtet."};
     if(!docker&&!fs.existsSync(active.python))return {status:"missing",reason:"Native Python-Umgebung nicht installiert."};
     if(docker&&(!active.image||!active.name))return {status:"missing",reason:"Docker-Engine noch nicht gestartet."};
-    const config=docker?active.configFile:active.configFile;
+    const config=active.configFile;
     let revision=0;
     try{revision=fs.statSync(config).mtimeMs;}catch{}
     const key=[runtime.mode,config,revision,docker?Boolean(active.gpu):active.python].join("|");
-    if(this.cachedCuda?.key===key&&this.clock()-this.cachedCuda.at<60000)return this.cachedCuda.data;
+    if(this.cachedCuda?.key===key&&this.clock()-this.cachedCuda.at<(this.cachedCuda.data.status==="ok"?60000:5000))return this.cachedCuda.data;
     let data;
     try{
       const command=docker?active.docker:active.python;
