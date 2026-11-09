@@ -47,7 +47,7 @@ test('main process uses isolated sandboxed renderer and blocks foreign/unknown I
 test('GPU diagnostics are read-only and require the trusted application window',async t=>{
   const h=await harness(t),diagnose=h.handlers.get('studio:gpu-diagnostics');
   assert.equal(typeof diagnose,'function');
-  await assert.rejects(diagnose({...h.trusted,senderFrame:{url:'https://example.invalid'}}),/autorisiert/);
+  assert.throws(()=>diagnose({...h.trusted,senderFrame:{url:'https://example.invalid'}}),/autorisiert/);
   const result=await diagnose(h.trusted);
   assert.equal(result.mode,'native');
   assert.equal(h.gpuCalls.length,1);
