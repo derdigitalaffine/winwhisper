@@ -42,13 +42,21 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: container/requirements-windows-py312.txt
-      - name: Create isolated native runtime
+      - name: Install native runtime using the same setup flow as Windows users
         shell: pwsh
         run: |
-          python -m venv .native-smoke
-          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check --upgrade pip
-          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check --index-url https://download.pytorch.org/whl/cpu torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
-          .\.native-smoke\Scripts\python.exe -m pip install --disable-pip-version-check -r container\requirements-windows-py312.txt
+          $env:WINWHISPER_DATA = Join-Path $PWD '.native-smoke-data'
+          ./scripts/Initialize-System.ps1 -Action whisperx -Device cpu -Workspace $env:WINWHISPER_DATA -Resources $PWD
+          $python = Join-Path $env:WINWHISPER_DATA 'runtime/native/venv/Scripts/python.exe'
+          $manifest = Get-Content (Join-Path $env:WINWHISPER_DATA 'runtime/native/runtime.json') -Raw | ConvertFrom-Json
+          if ($manifest.version -ne 2 -or $manifest.gpu -ne $false -or $manifest.flavor -ne 'cpu') {
+            throw "Unexpected native runtime manifest: $($manifest | ConvertTo-Json -Compress)"
+          }
+          & $python -c 'import torch,whisperx,ctranslate2; assert not torch.cuda.is_available()'
+          if ($LASTEXITCODE -ne 0) { throw 'Installed native CPU engine is not healthy.' }
+          $env:WINWHISPER_ENGINE = Join-Path $PWD 'container'
+          node -e "const {NativeWindowsRuntime}=require('./desktop/runtime.cjs');(async()=>{const r=new NativeWindowsRuntime({workspace:process.env.WINWHISPER_DATA,resources:process.cwd()});const s=await r.inspect();if(!s.ready||s.gpu)throw Error(JSON.stringify(s));console.log('Native Windows runtime ready')})().catch(e=>{console.error(e);process.exitCode=1})"
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop readiness check rejected the installed Python runtime.' }
       - name: Exercise native entry and AI bridge
         shell: pwsh
         run: |
@@ -57,20 +65,63 @@ jobs:
           $env:WINWHISPER_CLI = Join-Path $PWD 'container\whisperx_cli.py'
           $env:WINWHISPER_PLATFORM = 'windows-native'
           $env:WINWHISPER_OLLAMA = ''
+          $python = Join-Path $env:WINWHISPER_DATA 'runtime/native/venv/Scripts/python.exe'
           $env:PYTHONPATH = Join-Path $PWD 'container'
           New-Item -ItemType Directory -Force -Path $env:WINWHISPER_DATA | Out-Null
-          '{"id":1,"action":"shutdown","data":{}}' | .\.native-smoke\Scripts\python.exe container\native_entry.py
-          .\.native-smoke\Scripts\python.exe tests\test_native_engine.py
-          .\.native-smoke\Scripts\python.exe tests\test_model_download.py
-          .\.native-smoke\Scripts\python.exe tests\test_managed_windows_service.py
+          '{"id":1,"action":"shutdown","data":{}}' | & $python container\native_entry.py
+          & $python tests\test_native_engine.py
+          & $python tests\test_model_download.py
+          & $python tests\test_managed_windows_service.py
       - name: Run Windows service tests with native dependencies
         shell: pwsh
         run: |
+          $env:WINWHISPER_DATA = Join-Path $PWD '.native-smoke-data'
+          $python = Join-Path $env:WINWHISPER_DATA 'runtime/native/venv/Scripts/python.exe'
           $env:PYTHONPATH = Join-Path $PWD 'container'
           $bin = Join-Path $PWD '.native-smoke-bin'
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
-          $source = .\.native-smoke\Scripts\python.exe -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
+          $source = & $python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"
           Copy-Item -LiteralPath $source.Trim() -Destination (Join-Path $bin 'ffmpeg.exe') -Force
           $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
           & (Join-Path $bin 'ffmpeg.exe') -version | Select-Object -First 1
-          .\.native-smoke\Scripts\python.exe tests\test_windows_service.py
+          & $python tests\test_windows_service.py
+
+  release:
+    name: Publish Windows release
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: WinWhisper-Windows-x64
+          path: dist
+      - name: Verify installer and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          shopt -s nullglob
+          installers=(*Setup*.exe)
+          checksums=(*Setup*.exe.sha256)
+          test "${#installers[@]}" -eq 1
+          test "${#checksums[@]}" -eq 1
+          sha256sum -c "${checksums[0]}"
+      - name: Publish tagged GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+          tag="v${version}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to overwrite published artifacts." >&2
+            exit 1
+          fi
+          gh release create "$tag" dist/*Setup*.exe dist/*Setup*.exe.sha256 \
+            --target "$GITHUB_SHA" --title "WinWhisper Studio $tag" \
+            --notes-file RELEASE_NOTES.md

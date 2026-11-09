@@ -15,7 +15,7 @@ const TRUSTED='winwhisper://app/index.html';
 protocol.registerSchemesAsPrivileged([{scheme:'winwhisper',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true,stream:true}}]);
 let win,runtime,backend,files,lastState=null,capture=null,reconnecting=null,restoring=false,closing=false,quitting=false,closeTimer,fileTransfer=false;
 const resourceRoot=()=>app.isPackaged?process.resourcesPath:path.resolve(__dirname,'..');
-const allowed=new Set(['init','refresh','logs','cancel','waveform','settings','transcribe','generate','setup_speakers','metadata','update_segment','speakers','cut','trim','undo','model_pull','warmup_asr']);
+const allowed=new Set(['init','refresh','logs','cancel','waveform','settings','transcribe','generate','setup_speakers','metadata','update_segment','speakers','cut','trim','undo','model_pull','warmup_asr','remove_asr']);
 
 function send(event){if(win&&!win.isDestroyed())win.webContents.send('studio:event',event);}
 function checkSender(event){if(event.sender!==win?.webContents||event.senderFrame?.url!==TRUSTED)throw new Error('Nicht autorisierte Fensteranfrage.');}
@@ -128,11 +128,16 @@ async function stopCapture(id){
   try{c.writer.close();}finally{if(backend.child)await backend.request('record_stop');}
   return true;
 }
-async function systemAction(action){
+async function systemAction(action,options={}){
   if(!['wsl','docker','start-docker','ollama','whisperx'].includes(action))throw new Error('Unbekannter Einrichtungsschritt.');
   if(process.platform!=='win32')throw new Error('Dieser Einrichtungsschritt ist nur unter Windows verfügbar.');
   const script=path.join(resourceRoot(),'scripts','Initialize-System.ps1');
   const args=['-NoProfile','-ExecutionPolicy','Bypass','-File',script,'-Action',action,'-Workspace',runtime.workspace,'-Resources',resourceRoot()];
+  if(action==='whisperx'){
+    const device=options.device||'auto';
+    if(!['auto','cpu','gpu'].includes(device))throw new Error('Ungültiger Gerätemodus.');
+    args.push('-Device',device);
+  }
   return run('powershell.exe',args,{timeout:30*60*1000,onLine:data=>send({type:'setup_log',data})});
 }
 async function finishClose(){
@@ -214,7 +219,20 @@ else{
       }
       if(action==='workspace')return shell.openPath(runtime.workspace);
       if(action==='system'){
-        const result=await systemAction(data.action);
+        if(data.action==='whisperx'){
+          if(runtime.mode!=='native')throw new Error('WhisperX nativ kann nur im Windows-Modus eingerichtet werden.');
+          if(fileTransfer||lastState?.busy||lastState?.recording||capture)throw new Error('Bitte zuerst die laufende Verarbeitung beenden, bevor die Windows-Laufzeit repariert wird.');
+          if(backend.child)await backend.restart();
+        }
+        const result=await systemAction(data.action,data);
+        if(data.action==='whisperx'){
+          // A prior failed health check must not survive a successful repair.
+          runtime.native.health=null;
+          const status=await runtime.inspect();
+          send({type:'setup_status',data:status});
+          if(!status.ready)throw new Error(status.error||'Die Windows-Laufzeit konnte nach der Einrichtung nicht gestartet werden.');
+          await recover();
+        }
         if(data.action==='ollama'&&runtime.mode==='native'&&backend.child){await backend.restart();await recover();}
         return result;
       }

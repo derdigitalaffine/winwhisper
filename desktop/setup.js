@@ -108,11 +108,12 @@
         const mode=runtimeSelect.value,device=mode==='docker'?dockerMode.value:$('setupMode').value;
         if(mode==='native'){
           log('WhisperX-Setup wird in der externen Setup-Routine gestartet. Bitte den installierten Python-/WhisperX-Ordner nicht parallel im App-Dialog ändern.');
-          await api.setup('system',{action:'whisperx'});
+          await api.setup('system',{action:'whisperx',device});
           log('WhisperX-Setup abgeschlossen. Die Umgebung wird geprüft und anschließend gestartet.');
         } else {
-          await api.setup('system',{action:'docker'});
-          log('Docker / WSL 2-Setup gestartet. Danach kann die Docker-Laufzeit erneut geprüft werden.');
+          log('Baue die Docker-Engine und prüfe die gewünschte CPU-/NVIDIA-Laufzeit. Docker Desktop muss dafür bereits gestartet sein.');
+          await api.setup('prepare',{device});
+          log('Docker-Laufzeit eingerichtet und gestartet.');
         }
         display(await api.setup('status'));
       }else if(action==='start'){display(await api.setup('start'));log('Lokaler Hintergrunddienst gestartet.');}

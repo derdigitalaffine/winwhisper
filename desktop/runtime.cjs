@@ -196,8 +196,24 @@ class DockerRuntime extends EventEmitter{
       throw new Error(status.error||'Docker / WSL 2 muss extern über die Setup-Routine bereit gemacht werden.');
     }
     if(!status.image){
-      throw new Error('Die Docker-Umgebung ist noch nicht eingerichtet. Bitte zuerst die Setup-Routine „WSL / Docker einrichten“ ausführen.');
+      if(!fs.existsSync(path.join(this.enginePath,'Dockerfile')))throw new Error('Dockerfile fehlt im Installer.');
+      this.log('Baue die isolierte WhisperX-/Ollama-Engine in Docker (einmaliger Download).');
+      await this.run(this.docker,['build','--progress','plain','--tag',this.image,'--file',path.join(this.enginePath,'Dockerfile'),this.enginePath],{
+        timeout:2*60*60*1000,onLine:chunk=>this.log(chunk)
+      });
     }
+    let gpu=false;
+    if(device!=='cpu'){
+      try{
+        await this.run(this.docker,['run','--rm','--gpus','all','--entrypoint','nvidia-smi',this.image],{timeout:120000});
+        gpu=true;
+      }catch(error){
+        if(device==='gpu')throw new Error('NVIDIA-GPU in Docker nicht verfügbar: '+error.message.slice(-350));
+        this.log('Docker-GPU nicht verfügbar; die CPU bleibt nutzbar.');
+      }
+    }
+    this.gpu=gpu;
+    atomicJSON(this.configFile,{version:1,gpu,device:device});
     return this.inspect();
   }
   async removeOwned(){let owner;try{owner=await this.run(this.docker,['inspect','--format','{{index .Config.Labels "io.winwhisper.owner"}}',this.name],{timeout:10000});}catch{return;}if(owner.trim()!==this.owner)throw new Error('Ein fremder Container verwendet denselben Namen. Er wird nicht beendet.');await this.run(this.docker,['rm','--force',this.name],{timeout:20000});}

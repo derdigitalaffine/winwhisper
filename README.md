@@ -29,12 +29,11 @@ sollten vor der Verwendung geprüft werden.
 
 ## Installation unter Windows
 
-1. Öffne [Actions → Windows installer](https://github.com/derdigitalaffine/winwhisper/actions/workflows/windows-build.yml)
-   und lade im jüngsten erfolgreichen Lauf das Artefakt `WinWhisper-Windows-x64` herunter.
-   Das Artefakt enthält das Setup und eine SHA-256-Prüfsumme. Zum Herunterladen ist ein
-   GitHub-Konto mit Leserechten für das Repository erforderlich. GitHub bewahrt Artefakte
-   standardmäßig 90 Tage auf.
-2. Entpacke das Artefakt und starte `WinWhisper-Studio-1.0.0-Setup-x64.exe`.
+1. Öffne [GitHub Releases](https://github.com/derdigitalaffine/winwhisper/releases)
+   und lade das neueste signaturunabhängige Windows-x64-Setup und die zugehörige
+   SHA-256-Prüfsumme herunter. Die Releases werden nur nach erfolgreichem Windows-Build
+   automatisiert aus `main` veröffentlicht.
+2. Starte `WinWhisper-Studio-1.0.1-Setup-x64.exe` (oder die entsprechend neuere Version).
 3. Beim ersten Start öffnet sich der Einrichtungsassistent. **Windows nativ** ist der
    empfohlene Standard und benötigt weder WSL noch Docker Desktop. WinWhisper richtet eine
    eigene Python-3.12-Umgebung im Benutzer-Arbeitsordner ein. Fehlt Python 3.12 x64, versucht
@@ -44,7 +43,10 @@ sollten vor der Verwendung geprüft werden.
    Windows-Anwendung für den aktuellen Benutzer installiert werden.
 
 Die native Laufzeit installiert WhisperX in einer isolierten virtuellen Python-Umgebung
-innerhalb des WinWhisper-Arbeitsordners. FFmpeg wird über ein Python-Paket bereitgestellt;
+innerhalb des WinWhisper-Arbeitsordners. Eine abgebrochene Einrichtung lässt sich über
+**Windows-Laufzeit einrichten / reparieren** erneut ausführen; erst eine vollständig
+installierte und geprüfte Umgebung wird als betriebsbereit markiert. FFmpeg wird über
+ein Python-Paket bereitgestellt;
 eine systemweite FFmpeg-Installation ist nicht erforderlich. Sprachmodelle werden erst bei
 Bedarf lokal heruntergeladen. Die erste Einrichtung benötigt mehrere Gigabyte freien
 Speicher und eine Internetverbindung.
@@ -59,7 +61,9 @@ einen fehlgeschlagenen GPU-Test dagegen als Fehler. Eine NVIDIA-GPU ist nicht er
 Der bisherige Docker-Pfad bleibt verfügbar, ist aber nicht mehr der Standard. Im
 Einrichtungsassistenten kann unter **Lokale Laufzeit** auf `Docker / WSL 2 · erweitert`
 gewechselt werden. Dieser Modus benötigt weiterhin WSL 2, Docker Desktop und Linux-
-Container. Er ist als Rückfalloption gedacht, falls die native Windows-Laufzeit auf einem
+Container. Nachdem Docker Desktop gestartet wurde, baut **Docker-Laufzeit einrichten**
+das WhisperX-/Ollama-Image bei Bedarf und prüft die gewählte CPU-/GPU-Konfiguration.
+Er ist als Rückfalloption gedacht, falls die native Windows-Laufzeit auf einem
 bestimmten Rechner nicht eingesetzt werden kann.
 
 Die Anwendung veröffentlicht in keinem Modus einen Whisper-Port im Windows-Netzwerk.
@@ -71,10 +75,11 @@ gegebenenfalls noch fehlende Sprach- oder Ausrichtungsmodelle benötigt.
 ## Einen Windows-Build erstellen
 
 Ein erfolgreicher Lauf des GitHub-Actions-Workflows erstellt das x64-Setup automatisch
-bei einem Push auf `main`. Pull Requests führen denselben Windows-Test- und Buildpfad aus.
-Ein Build kann außerdem manuell über **Actions → Windows installer → Run workflow**
-gestartet werden. Das Setup und die Prüfsumme liegen danach beim jeweiligen Workflow-Lauf
-als Artefakt; sie werden nicht automatisch als dauerhafte GitHub-Veröffentlichung angelegt.
+bei einem Push auf `main`. Nach erfolgreichem Build werden Installer und SHA-256-Datei
+in einem versionierten [GitHub Release](https://github.com/derdigitalaffine/winwhisper/releases)
+veröffentlicht. Pull Requests führen denselben Windows-Test- und Buildpfad ohne Veröffentlichung
+aus. Ein Build kann außerdem manuell über **Actions → Windows installer → Run workflow**
+gestartet werden; bei manuellen Läufen bleibt es bei dem Build-Artefakt.
 
 Alternativ lässt sich das Setup auf Windows 11 x64 lokal bauen:
 
@@ -117,6 +122,14 @@ Das Windows-Setup lässt sich auf Windows mit `npm run dist:win` erstellen. Die 
 Docker-basierte KI-Engine liegen in `container/`, die Windows-Oberfläche in `desktop/` und
 die Systemeinrichtung unter `scripts/`. Projekt-, Aufnahme- und Modelldaten bleiben im
 lokalen Windows-Arbeitsordner der Anwendung.
+
+## Windows-Kompatibilität (November 2026)
+
+Zielplattform ist **Windows 11 x64**, einschließlich **26H2**. Der CI-Installer wird
+auf `windows-latest` (GitHub-gehosteter Windows-Server-Runner) gebaut und getestet;
+das ist **kein vollständiger Windows-11-26H2-Hardwaretest**. Deshalb gehören
+Mikrofonfreigabe, geschützte Unternehmensrechner, CUDA-Treiber, größere Downloads
+und die tatsächliche Installation auf Windows 11 weiterhin zur Freigabeabnahme.
 
 ## Prüfstand
 
