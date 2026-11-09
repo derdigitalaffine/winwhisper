@@ -108,7 +108,7 @@
         const mode=runtimeSelect.value,device=mode==='docker'?dockerMode.value:$('setupMode').value;
         if(mode==='native'){
           log('WhisperX-Setup wird in der externen Setup-Routine gestartet. Bitte den installierten Python-/WhisperX-Ordner nicht parallel im App-Dialog ändern.');
-          await api.setup('system',{action:'whisperx'});
+          await api.setup('system',{action:'whisperx',device});
           log('WhisperX-Setup abgeschlossen. Die Umgebung wird geprüft und anschließend gestartet.');
         } else {
           await api.setup('system',{action:'docker'});
