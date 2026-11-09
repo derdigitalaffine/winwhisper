@@ -8,11 +8,11 @@ import sys
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
 if os.name == "nt" and os.environ.get("WINWHISPER_DATA"):
-    from native_entry import _prepare_torchcodec_dlls
+    from native_entry import _prepare_ffmpeg
 
-    # Batch WhisperX imports pyannote even when diarization is disabled. Prepare
-    # the process-local DLL search path; only explicit speaker setup requires it.
-    _prepare_torchcodec_dlls(strict="--setup-speakers" in sys.argv)
+    # The CLI starts as a separate process. Set up the bundled FFmpeg executable
+    # there as well; no TorchCodec DLL loader is required for in-memory audio.
+    _prepare_ffmpeg()
 if "--live" in sys.argv:
     sys.argv.remove("--live")
     runpy.run_path(
