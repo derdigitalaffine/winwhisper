@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('studio',{
   help:()=>ipcRenderer.invoke('studio:help'),
   openLink:which=>ipcRenderer.invoke('studio:link',which),
   setup:(action,data={})=>ipcRenderer.invoke('studio:setup',action,data),
+  gpuDiagnostics:()=>ipcRenderer.invoke('studio:gpu-diagnostics'),
   audio:{start:()=>ipcRenderer.invoke('studio:audio','start'),append:(id,sequence,pcm)=>ipcRenderer.invoke('studio:audio','append',{id,sequence,pcm}),stop:id=>ipcRenderer.invoke('studio:audio','stop',{id})},
   onEvent:callback=>{const listener=(_e,payload)=>callback(payload);ipcRenderer.on('studio:event',listener);return ()=>ipcRenderer.removeListener('studio:event',listener);}
 });

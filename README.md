@@ -33,7 +33,7 @@ sollten vor der Verwendung geprüft werden.
    und lade das neueste signaturunabhängige Windows-x64-Setup und die zugehörige
    SHA-256-Prüfsumme herunter. Die Releases werden nur nach erfolgreichem Windows-Build
    automatisiert aus `main` veröffentlicht.
-2. Starte `WinWhisper-Studio-1.0.1-Setup-x64.exe` (oder die entsprechend neuere Version).
+2. Starte `WinWhisper-Studio-1.0.2-Setup-x64.exe` (oder die entsprechend neuere Version).
 3. Beim ersten Start öffnet sich der Einrichtungsassistent. **Windows nativ** ist der
    empfohlene Standard und benötigt weder WSL noch Docker Desktop. WinWhisper richtet eine
    eigene Python-3.12-Umgebung im Benutzer-Arbeitsordner ein. Fehlt Python 3.12 x64, versucht
@@ -55,6 +55,25 @@ Bei `Automatisch` prüft WinWhisper zuerst, ob eine NVIDIA-GPU vorhanden ist. Di
 Laufzeit wird anschließend mit PyTorch **und** CTranslate2 getestet. Wenn der GPU-Test
 scheitert, bleibt der Automatikmodus auf CPU nutzbar. `NVIDIA-GPU erforderlich` behandelt
 einen fehlgeschlagenen GPU-Test dagegen als Fehler. Eine NVIDIA-GPU ist nicht erforderlich.
+
+### Live-GPU-Diagnose
+
+Unter **Einrichtung → GPU-Diagnose · Live-Auslastung und KI-Beschleunigung** werden
+bei geöffnetem Diagnosebereich alle fünf Sekunden die NVIDIA-GPU, aktueller VRAM-
+Verbrauch, Treiber und GPU-Auslastung angezeigt. Außerdem testet WinWhisper, ob
+die verwaltete WhisperX-Python-Umgebung CUDA über **PyTorch und CTranslate2**
+wirklich verwenden kann. Die Transkriptionseinstellung (`Automatisch`, `GPU`,
+`CPU`) wird getrennt vom Installationsmodus ausgewiesen.
+
+Der lokale Ollama-Dienst wird über `127.0.0.1:11435/api/ps` abgefragt (im
+Docker-Modus im Container). Geladene Modelle zeigen ihren GPU-Speicheranteil;
+`CPU`/ `GPU`/ `gemischt` wird **aus der Modell-Speicherverteilung geschätzt**,
+nicht aus der gemessenen Rechenzeit. Ein nicht geladenes Modell wird nicht
+fälschlich als CPU-Modell dargestellt. GPU-Last von `nvidia-smi` gilt für das
+**gesamte System** und ist allein kein Nachweis, dass WhisperX auf der GPU
+rechnet. Die Diagnose nutzt keine externe Telemetrie und startet keine
+Modell-Downloads. Für einen aussagekräftigen Test eine Transkription beziehungsweise
+Auswertung ausführen, während der Diagnosebereich geöffnet ist.
 
 ### Docker / WSL 2 als Kompatibilitätsmodus
 

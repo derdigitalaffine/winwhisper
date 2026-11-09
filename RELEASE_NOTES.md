@@ -1,21 +1,10 @@
-# WinWhisper Studio v1.0.1 — Windows compatibility update
+# WinWhisper Studio v1.0.2 — GPU-Diagnose und Windows-Build
 
-This release focuses on a reliable Windows 11 x64 setup (including the Windows 11 26H2 compatibility target).
+## Neu
+- Live-Diagnose unter **Einrichtung** mit NVIDIA-Modell, Treiberversion, VRAM-Belegung und gemessener GPU-Gesamtauslastung.
+- Diagnostik der nativen WhisperX-Laufzeit mit PyTorch-CUDA, CTranslate2-GPU-Erkennung und tatsächlich gewähltem Transkriptionsmodus.
+- Lokale Ollama-Diagnose für geladene Modelle, inklusive GPU-/CPU-Speicherverteilung; Docker-Modus wird separat im eigenen Container abgefragt.
+- Sichere, rein lesende Diagnose über einen isolierten Electron-IPC-Kanal. Messwerte werden nur bei geöffnetem Bereich abgerufen und ohne HTML-Injektion dargestellt.
+- Neue Unit-/IPC-Tests für GPU, CPU-Fallback, Offline-Ollama und Docker-Engine. Windows-Installer weiterhin per GitHub Actions.
 
-## Changes
-- Fix native Python 3.12 / WhisperX setup readiness so a successful first-run installation is recognized.
-- Repair interrupted Python environments without deleting existing recordings, projects, or models.
-- Correct WhisperX CLI startup, including private FFmpeg provisioning for transcription.
-- Support automatic CPU fallback when CUDA 12.8 / NVIDIA GPU compatibility checks fail.
-- Restore Whisper model removal in Electron's trusted IPC interface.
-- Restore Docker/WSL compatibility mode by building the missing engine image.
-- Verify real Windows setup scripts and native AI entry points in GitHub Actions before publishing.
-
-## Installation
-Download the `WinWhisper-Studio-1.0.1-Setup-x64.exe` asset and its `.sha256` checksum.
-Install on Windows 11 x64. At first start, choose **Windows nativ**, then **Windows-Laufzeit einrichten / reparieren**.
-You can also choose the Docker/WSL fallback in the setup UI.
-
-**Important:** The Windows installer is unsigned; Windows SmartScreen may show a warning. Do not bypass your organization's application policies. The first setup downloads Python/WhisperX model dependencies; native CPU transcription works without Docker or Ollama. Ollama is optional for report generation.
-
-Automated validation uses Windows GitHub Actions runners. Windows 11 26H2-specific hardware acceptance (microphone, GPU drivers, managed endpoint restrictions, large models and long recordings) is not implied.
+**Wichtig:** NVIDIA-Gesamtauslastung und Ollama-Modellspeicher sind Indikatoren; sie beweisen nicht für jeden Auftrag den tatsächlichen Rechenweg. Windows 11 / NVIDIA-Hardware muss zusätzlich praktisch getestet werden. Der Installer ist ohne Signaturzertifikat nicht signiert.
