@@ -85,3 +85,43 @@ jobs:
           $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
           & (Join-Path $bin 'ffmpeg.exe') -version | Select-Object -First 1
           & $python tests\test_windows_service.py
+
+  release:
+    name: Publish Windows release
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: WinWhisper-Windows-x64
+          path: dist
+      - name: Verify installer and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          shopt -s nullglob
+          installers=(*Setup*.exe)
+          checksums=(*Setup*.exe.sha256)
+          test "${#installers[@]}" -eq 1
+          test "${#checksums[@]}" -eq 1
+          sha256sum -c "${checksums[0]}"
+      - name: Publish tagged GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+          tag="v${version}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to overwrite published artifacts." >&2
+            exit 1
+          fi
+          gh release create "$tag" dist/*Setup*.exe dist/*Setup*.exe.sha256 \
+            --target "$GITHUB_SHA" --title "WinWhisper Studio $tag" \
+            --notes-file RELEASE_NOTES.md
