@@ -54,7 +54,9 @@ function Ensure-WhisperPython {
     foreach ($installAttempt in 0..1) {
       foreach ($candidate in $candidates) {
         try {
-          $version = & $candidate.Command @($candidate.Args) -c 'import platform,sys; print(f"{sys.version_info.major}.{sys.version_info.minor}|{platform.architecture()[0]}")' 2>$null
+          $candidateCommand = $candidate.Command
+          $candidateArgs = $candidate.Args
+          $version = & $candidateCommand @candidateArgs -c 'import platform,sys; print(f"{sys.version_info.major}.{sys.version_info.minor}|{platform.architecture()[0]}")' 2>$null
           if ($LASTEXITCODE -eq 0 -and $version -match '3\.12\|64bit') { $base = $candidate; break }
         } catch {}
       }
@@ -69,7 +71,9 @@ function Ensure-WhisperPython {
     }
     if (-not $base) { throw 'Python 3.12 x64 wurde nach der Installation nicht gefunden. Bitte eine neue PowerShell starten und erneut versuchen.' }
     Write-Output 'Erzeuge die lokale WinWhisper-Python-Umgebung.'
-    & $base.Command @($base.Args + @('-m','venv',$VenvPath))
+    $baseCommand = $base.Command
+    $venvArgs = @($base.Args) + @('-m','venv',$VenvPath)
+    & $baseCommand @venvArgs
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $pythonExe)) { throw 'Erstellung der lokalen Python-Umgebung fehlgeschlagen.' }
   }
 
