@@ -25,6 +25,18 @@
       <label>Verarbeitung <select id="setupDockerMode"><option value="auto">Automatisch · NVIDIA-GPU, sonst CPU</option><option value="cpu">Nur CPU</option><option value="gpu">NVIDIA-GPU erforderlich</option></select></label>
       <div class="setup-actions"><button class="btn btn-teal" data-setup="prepare">Docker-Laufzeit einrichten</button><button class="btn btn-white" data-setup="start">Vorhandene Umgebung starten</button><button class="btn btn-white" data-setup="restart">Umgebung neu starten</button></div>
     </section>
+    <details id="gpuDiagnosticsPanel" class="gpu-diagnostics">
+      <summary>GPU-Diagnose · Live-Auslastung und KI-Beschleunigung</summary>
+      <p>Diese Werte werden nur bei geöffnetem Bereich alle 5 Sekunden aktualisiert. Die Auslastung von nvidia-smi gilt für die gesamte Grafikkarte – nicht nur für WinWhisper. Ollama zeigt die Speicherverteilung aktuell geladener Modelle.</p>
+      <div class="gpu-diag-grid">
+        <section><strong>NVIDIA · VRAM und GPU</strong><p id="gpuHardware">Noch nicht geprüft.</p></section>
+        <section><strong>CUDA · PyTorch · CTranslate2</strong><p id="gpuCuda">Noch nicht geprüft.</p></section>
+        <section><strong>WhisperX · Transkriptionsgerät</strong><p id="gpuWhisper">Noch nicht geprüft.</p></section>
+        <section><strong>Ollama · Protokolle und KI</strong><p id="gpuOllama">Noch nicht geprüft.</p><p id="gpuModels"></p></section>
+      </div>
+      <p id="gpuAdvice" class="gpu-diag-advice">Während einer Transkription oder KI-Auswertung öffnen, um die Nutzung zu beobachten.</p>
+      <div class="setup-actions"><button type="button" class="btn btn-white" id="gpuRefresh">Jetzt prüfen</button><span id="gpuUpdated" class="setup-workspace" aria-live="polite">Noch nicht aktualisiert</span></div>
+    </details>
     <h3>3 · Whisper-Modell verwalten</h3>
     <p>Wähle das Modell, das für neue Transkriptionen verwendet werden soll. Die Auswahl wird sofort gespeichert. <strong>Tiny</strong> ist die kleinste und schnellste Variante; Small bleibt der ausgewogene Standard.</p>
     <label class="input-group"><span>Aktives Whisper-Modell</span><select id="setupAsrModel"><option value="tiny">Tiny · kleinster Download, sehr schnell</option><option value="base">Base · klein und kompakt</option><option value="small" selected>Small · ausgewogen, Standard</option><option value="medium">Medium · genauer, größer</option><option value="large-v3">Large v3 · höchste Qualität, sehr groß</option></select></label>
@@ -33,7 +45,7 @@
     <p>Auch ein abgebrochener oder unvollständiger Whisper-Download kann über „entfernen“ aus dem lokalen Cache gelöscht und danach sauber neu installiert werden.</p>
     <p>Beim Whisper-Download öffnet sich das Einrichtungsprotokoll automatisch. Dort siehst du Quelle, Cache-Prüfung, Downloadfortschritt, Verifikation und eine konkrete Fehlermeldung.</p>
     <p>Für Sprechertrennung anschließend in den Transkriptionseinstellungen „Sprechermodell einrichten“ wählen.</p>
-    <details><summary>Einrichtungsprotokoll</summary><pre id="setupLog" class="activity-log"></pre></details>
+    <details data-setup-log><summary>Einrichtungsprotokoll</summary><pre id="setupLog" class="activity-log"></pre></details>
     <p id="setupWorkspace" class="setup-workspace"></p><button class="text-button" data-setup="workspace">Aufnahmen, Projekte und Modelle im Explorer öffnen</button>`;
 
   const runtimeSelect=document.getElementById('setupRuntime');
@@ -42,10 +54,54 @@
   const dockerSection=body.querySelector('[data-runtime-docker]');
   const dockerMode=document.getElementById('setupDockerMode');
   const asrModel=document.getElementById('setupAsrModel');
-  const logDetails=body.querySelector('details');
+  const logDetails=body.querySelector('[data-setup-log]');
+  const gpuPanel=$('gpuDiagnosticsPanel');
   const asrNames={tiny:'Tiny',base:'Base',small:'Small',medium:'Medium','large-v3':'Large v3'};
 
   function log(text){const box=$('setupLog');box.textContent=(box.textContent+String(text)+'\n').slice(-24000);box.scrollTop=box.scrollHeight;}
+  let gpuTimer=null,gpuBusy=false;
+  const gpuLabel=value=>value===null||value===undefined?'unbekannt':String(value);
+  function showGpuDiagnostics(data){
+    const devices=data.gpu?.devices||[];
+    $('gpuHardware').textContent=devices.length?devices.map(device=>
+      `${device.name} · ${gpuLabel(device.usedMb)} / ${gpuLabel(device.totalMb)} MB VRAM · ${gpuLabel(device.utilization)} % GPU-Auslastung · Treiber ${device.driver}`
+    ).join('\n'):(data.gpu?.reason||'Keine NVIDIA-GPU erkannt.');
+    const cuda=data.cuda||{};
+    $('gpuCuda').textContent=cuda.status==='ok'
+      ?`PyTorch ${cuda.torchVersion||'?'} · CUDA ${cuda.cudaVersion||'nicht verfügbar'} · PyTorch GPU: ${cuda.torchCuda?'ja':'nein'} · CTranslate2 GPUs: ${cuda.ct2Devices||0}${cuda.computeTypes?.length?' · '+cuda.computeTypes.join(', '):''}${cuda.error?' · '+cuda.error:''}`
+      :(cuda.reason||'CUDA nicht geprüft.');
+    const whisper=data.whisperx||{};
+    $('gpuWhisper').textContent=`Transkription: ${whisper.selected||'auto'} · Installierte Laufzeit: ${whisper.setupGpu?'GPU':'CPU'} · ${whisper.configured||'unbekannt'}`;
+    const models=data.ollama?.models||[];
+    $('gpuOllama').textContent=data.ollama?.status==='ok'
+      ?models.length?`${models.length} KI-Modell(e) geladen.`:'Dienst erreichbar · aktuell kein Modell geladen.'
+      :(data.ollama?.reason||'Ollama nicht erreichbar.');
+    $('gpuModels').textContent=models.map(model=>
+      `${model.name} · ${model.placement} · ${gpuLabel(model.vramGb)} / ${gpuLabel(model.sizeGb)} GiB Modell/VRAM`
+    ).join('\n');
+    $('gpuAdvice').textContent=!devices.length
+      ?'NVIDIA-Treiber/Grafikkarte prüfen. Ollama kann je nach System auch andere GPUs verwenden.'
+      :cuda.status==='ok'&&!cuda.ready
+        ?'WhisperX fällt bei automatischer Auswahl auf CPU zurück. Die Windows-Laufzeit ggf. mit GPU-Einstellung reparieren.'
+        :'CUDA-Status zeigt die technische Verfügbarkeit, nicht die tatsächlich ausgeführte Transkription. GPU-Auslastung während eines Auftrags beobachten.';
+    $('gpuUpdated').textContent='Aktualisiert: '+new Date(data.timestamp).toLocaleTimeString('de-DE');
+  }
+  async function refreshGpu(){
+    if(gpuBusy||!gpuPanel.open||!$('runtimeDialog').open||typeof api.gpuDiagnostics!=='function')return;
+    gpuBusy=true;
+    $('gpuUpdated').textContent='GPU-Diagnose läuft …';
+    try{showGpuDiagnostics(await api.gpuDiagnostics());}
+    catch(error){$('gpuUpdated').textContent='Diagnose fehlgeschlagen: '+String(error.message||error);}
+    finally{gpuBusy=false;}
+  }
+  function stopGpuPolling(){if(gpuTimer!==null){clearInterval(gpuTimer);gpuTimer=null;}}
+  function gpuPolling(){
+    stopGpuPolling();
+    if(gpuPanel.open&&$('runtimeDialog').open){refreshGpu();gpuTimer=setInterval(refreshGpu,5000);}
+  }
+  gpuPanel.addEventListener('toggle',gpuPolling);
+  $('gpuRefresh').addEventListener('click',refreshGpu);
+  $('runtimeDialog').addEventListener('close',stopGpuPolling);
   async function show(){if(window.StudioActions&&(await window.StudioActions.flushEditor())===false)return;const dialog=$('runtimeDialog');if(!dialog.open)dialog.showModal();refresh();}
   function currentWhisperInfo(){return (serviceState.whisper_models||{})[asrModel.value]||{};}
   function updateWhisperUi(){
