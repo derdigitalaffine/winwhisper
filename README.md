@@ -33,7 +33,7 @@ sollten vor der Verwendung geprüft werden.
    und lade das neueste signaturunabhängige Windows-x64-Setup und die zugehörige
    SHA-256-Prüfsumme herunter. Die Releases werden nur nach erfolgreichem Windows-Build
    automatisiert aus `main` veröffentlicht.
-2. Starte `WinWhisper-Studio-1.0.2-Setup-x64.exe` (oder die entsprechend neuere Version).
+2. Starte `WinWhisper-Studio-1.0.3-Setup-x64.exe` (oder die entsprechend neuere Version).
 3. Beim ersten Start öffnet sich der Einrichtungsassistent. **Windows nativ** ist der
    empfohlene Standard und benötigt weder WSL noch Docker Desktop. WinWhisper richtet eine
    eigene Python-3.12-Umgebung im Benutzer-Arbeitsordner ein. Fehlt Python 3.12 x64, versucht
@@ -167,3 +167,30 @@ Copyright © 2026 Dominik Tröster, Verbandsgemeinde Otterbach-Otterberg.
 Der hier enthaltene Projektcode wird unter der MIT-Lizenz angeboten. Die eingebundenen
 und heruntergeladenen Drittprojekte sowie Sprachmodelle bleiben ihren eigenen Lizenzen,
 Modellkarten und Nutzungsbedingungen unterstellt.
+
+### NVIDIA-GPU und Performance ab v1.0.3
+
+Im Automatikmodus prüft jeder Transkriptionsprozess CUDA erneut. Windows lädt die
+DLLs aus der verwalteten Python-Umgebung; ein systemweites CUDA Toolkit ist dafür
+nicht erforderlich. NVIDIA-Treiber müssen zur installierten PyTorch-CUDA-12.8-
+Laufzeit und zur Grafikkarte passen. Alte CPU-Installationen aus v1.0.2 werden bei
+erkannter NVIDIA-Karte beim ersten Start automatisch repariert (Paketdownload).
+Eine in v1.0.3 ausdrücklich eingerichtete CPU-Laufzeit wird nicht umgestellt.
+
+Das Auftragsprotokoll zeigt beispielsweise `cuda · float16 · Batch 8`, bei wenig
+freiem VRAM `int8_float16`, und auf CPU `int8`. GPU-Speicherfehler führen zunächst
+zu einem neuen Versuch mit Batch 1 und kompakter Präzision; nur im Automatikmodus
+folgt danach CPU-Fallback. Modellzugriffs- und Audiofehler werden separat gemeldet.
+Die erste Modellladung und die Wortausrichtung/Sprechertrennung benötigen weiterhin
+Zeit; eine konkrete Beschleunigungsrate hängt von Hardware und Audio ab.
+
+WhisperX und Ollama haben getrennte GPU-Laufzeiten. Unter **Einrichtung → GPU-Diagnose**
+sieht man CUDA-Prüfung und geladene Ollama-Modelle. Das lokale
+`logs/ollama-native.log` enthält Ollamas eigene GPU-Erkennung. Geerbte
+`CUDA_VISIBLE_DEVICES`-/`OLLAMA_LLM_LIBRARY`-Einstellungen bleiben erhalten und werden
+im App-Protokoll genannt. Ein großes Modell oder sein Kontext kann den verfügbaren
+VRAM überschreiten und deshalb CPU/GPU-Hybridverarbeitung auslösen. Ollama wählt die
+GPU selbst; die App erzwingt keine unpassende CUDA-Backend-Version oder Layeranzahl.
+
+Technische Grundlagen: [faster-whisper CUDA-Anforderungen](https://github.com/SYSTRAN/faster-whisper#gpu)
+und [Ollama GPU-Unterstützung](https://docs.ollama.com/gpu).

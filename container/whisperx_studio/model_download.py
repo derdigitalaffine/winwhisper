@@ -145,7 +145,8 @@ def _make_writable(root: Path) -> None:
         entries = [root]
     for entry in entries:
         try:
-            os.chmod(entry, stat.S_IWRITE | stat.S_IREAD)
+            # Keep directory search permissions in the Docker/POSIX fallback.
+            os.chmod(entry, entry.stat().st_mode | stat.S_IWRITE | stat.S_IREAD)
         except OSError:
             pass
 
@@ -153,7 +154,7 @@ def _make_writable(root: Path) -> None:
 def _retry_remove_readonly(function, path, _excinfo) -> None:
     """shutil.rmtree callback for read-only files left by old Windows caches."""
     try:
-        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+        os.chmod(path, Path(path).stat().st_mode | stat.S_IWRITE | stat.S_IREAD)
     except OSError:
         pass
     function(path)

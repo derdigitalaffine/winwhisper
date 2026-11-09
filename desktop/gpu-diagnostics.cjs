@@ -4,7 +4,7 @@
 // telemetry. NVIDIA utilization is system-wide, NOT proof a job used the GPU.
 const fs=require("node:fs");
 const http=require("node:http");
-const {run}=require("./runtime.cjs");
+const {run,nvidiaSmi}=require("./runtime.cjs");
 
 function number(value){
   const parsed=Number(String(value).trim());
@@ -51,15 +51,7 @@ function fetchLocalOllama(port=11435){
     request.on("error",reject);
   });
 }
-const PYTHON_CUDA_CHECK=[
-  "import json,torch,ctranslate2",
-  "result={'torchCuda': bool(torch.cuda.is_available()), 'torchVersion': str(torch.__version__), 'cudaVersion': torch.version.cuda, 'ct2Devices': 0, 'ct2Error': '', 'computeTypes': []}",
-  "try:",
-  " result['ct2Devices']=int(ctranslate2.get_cuda_device_count())",
-  " if result['ct2Devices']>0: result['computeTypes']=sorted(ctranslate2.get_supported_compute_types('cuda'))",
-  "except Exception as exc: result['ct2Error']=str(exc)[:240]",
-  "print(json.dumps(result))"
-].join("\n");
+const PYTHON_CUDA_CHECK="import json; from whisperx_studio.gpu_runtime import probe; print(json.dumps(probe()))";
 
 class GpuDiagnostics{
   constructor(runtime,{runner=run,ollamaFetch=fetchLocalOllama,clock=()=>Date.now()}={}){
@@ -88,8 +80,8 @@ class GpuDiagnostics{
       data={status:"ok",torchCuda:raw.torchCuda===true,ct2Devices:Number(raw.ct2Devices)||0,
         torchVersion:String(raw.torchVersion||""),cudaVersion:raw.cudaVersion||null,
         computeTypes:Array.isArray(raw.computeTypes)?raw.computeTypes:[],
-        error:String(raw.ct2Error||"").slice(0,240)};
-      data.ready=data.torchCuda&&data.ct2Devices>0&&data.computeTypes.length>0;
+        error:String(raw.ct2Error||"").slice(0,1000),dllPaths:raw.dllPaths||[],deviceName:raw.deviceName||"",freeMb:raw.freeMb||0};
+      data.ready=(raw.ready!==false)&&data.torchCuda&&data.ct2Devices>0&&data.computeTypes.length>0;
     }catch(error){data={status:"error",ready:false,reason:String(error.message).slice(-350)};}
     this.cachedCuda={key,at:this.clock(),data};
     return data;
@@ -98,7 +90,7 @@ class GpuDiagnostics{
     if(this.runtime.platform!=="win32")return {status:"unsupported",devices:[],
       reason:"NVIDIA-Windows-Treiberdiagnose nur unter Windows verfügbar."};
     try{
-      const result=await this.runner("nvidia-smi.exe",
+      const result=await this.runner(nvidiaSmi(),
         ["--query-gpu=name,memory.total,memory.used,utilization.gpu,driver_version","--format=csv,noheader,nounits"],
         {timeout:5000});
       const devices=parseNvidiaSmi(result);

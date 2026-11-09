@@ -34,6 +34,13 @@ def main():
                 report = generate(project, model, project["directory"], emit, client=client)
         finally:
             try:
+                for loaded in client.request("/api/ps").get("models", []):
+                    size, vram = loaded.get("size", 0), loaded.get("size_vram")
+                    placement = "unbekannt" if not size or vram is None else "CPU" if vram == 0 else "GPU" if vram >= size * .98 else "CPU + GPU"
+                    emit("diagnostic", f"Ollama {loaded.get('name', model)}: {placement} · VRAM {vram} / {size} Bytes. CPU/Hybrid: Modellgröße, freien VRAM und logs/ollama-native.log prüfen.")
+            except Exception:
+                pass  # Diagnostics must never fail an otherwise usable report.
+            try:
                 client.unload(model)
             except Exception:
                 pass

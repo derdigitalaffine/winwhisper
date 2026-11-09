@@ -12,6 +12,9 @@ import sys
 import time
 
 import numpy as np
+from whisperx_studio.gpu_runtime import gpu_failure, policy, prepare_cuda
+
+prepare_cuda()
 from faster_whisper import WhisperModel
 
 
@@ -43,14 +46,23 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--stop-file", type=Path, required=True)
     parser.add_argument("--language", default="de")
+    parser.add_argument("--device", choices=("auto", "cpu", "gpu"), default="auto")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    import ctranslate2
-    import torch
+    selected = policy(args.device)
 
-    device = "cuda" if torch.cuda.is_available() and ctranslate2.get_cuda_device_count() > 0 else "cpu"
-    model = WhisperModel("small", device=device, compute_type="int8", cpu_threads=4, local_files_only=True)
-    emit("ready", message=f"Live-Modell auf {device} bereit.")
+    def load_model():
+        return WhisperModel("small", device=selected["device"], compute_type=selected["compute"], cpu_threads=4, local_files_only=True)
+
+    try:
+        model = load_model()
+    except Exception as exc:
+        if args.device != "auto" or selected["device"] != "cuda" or not gpu_failure(exc):
+            raise
+        emit("diagnostic", message="Live CPU-Fallback: " + str(exc))
+        selected = policy("cpu")
+        model = load_model()
+    emit("ready", message=f"Live-Modell: {selected['device']} · {selected['compute']} · {selected['reason']}")
     rate, stride, context = 16000, 4 * 16000, 2 * 16000
     next_end, previous_end, committed_until = stride, 0, -1.0
     transcript = []
@@ -65,7 +77,7 @@ def main():
             time.sleep(.1)
 
     def process(end, final):
-        nonlocal committed_until, selected_language
+        nonlocal committed_until, selected_language, model, selected
         start = max(0, previous_end - context)
         with args.audio.open("rb") as f:
             f.seek(offset + start * 2)
@@ -75,7 +87,23 @@ def main():
         audio = np.frombuffer(raw[:len(raw) // 2 * 2], dtype=np.int16).astype(np.float32) / 32768.0
         if len(audio) < rate // 5 or np.max(np.abs(audio)) < .003:
             return
-        segments, info = model.transcribe(audio, language=selected_language, beam_size=3, word_timestamps=True, vad_filter=True, vad_parameters={"min_silence_duration_ms": 350}, condition_on_previous_text=False, temperature=0)
+        def decode():
+            segments, info = model.transcribe(audio, language=selected_language, beam_size=3, word_timestamps=True, vad_filter=True, vad_parameters={"min_silence_duration_ms": 350}, condition_on_previous_text=False, temperature=0)
+            return list(segments), info  # CUDA errors can occur during lazy decoding.
+        try:
+            segments, info = decode()
+        except Exception as exc:
+            if args.device != "auto" or selected["device"] != "cuda" or not gpu_failure(exc):
+                raise
+            emit("diagnostic", message="Live CPU-Fallback: " + str(exc))
+            del model
+            import gc
+            import torch
+            gc.collect()
+            torch.cuda.empty_cache()
+            selected = policy("cpu")
+            model = load_model()
+            segments, info = decode()
         if selected_language is None and info.language_probability > .6:
             selected_language = info.language
         cutoff = end / rate if final else end / rate - .8

@@ -68,13 +68,13 @@
     ).join('\n'):(data.gpu?.reason||'Keine NVIDIA-GPU erkannt.');
     const cuda=data.cuda||{};
     $('gpuCuda').textContent=cuda.status==='ok'
-      ?`PyTorch ${cuda.torchVersion||'?'} · CUDA ${cuda.cudaVersion||'nicht verfügbar'} · PyTorch GPU: ${cuda.torchCuda?'ja':'nein'} · CTranslate2 GPUs: ${cuda.ct2Devices||0}${cuda.computeTypes?.length?' · '+cuda.computeTypes.join(', '):''}${cuda.error?' · '+cuda.error:''}`
+      ?`PyTorch ${cuda.torchVersion||'?'} · CUDA ${cuda.cudaVersion||'nicht verfügbar'} · PyTorch GPU: ${cuda.torchCuda?'ja':'nein'} · CTranslate2 GPUs: ${cuda.ct2Devices||0}${cuda.computeTypes?.length?' · '+cuda.computeTypes.join(', '):''}${cuda.error?' · '+cuda.error:''}${cuda.dllPaths?.length?' · DLL: '+cuda.dllPaths.join('; '):''}`
       :(cuda.reason||'CUDA nicht geprüft.');
     const whisper=data.whisperx||{};
     $('gpuWhisper').textContent=`Transkription: ${whisper.selected||'auto'} · Installierte Laufzeit: ${whisper.setupGpu?'GPU':'CPU'} · ${whisper.configured||'unbekannt'}`;
     const models=data.ollama?.models||[];
     $('gpuOllama').textContent=data.ollama?.status==='ok'
-      ?models.length?`${models.length} KI-Modell(e) geladen.`:'Dienst erreichbar · aktuell kein Modell geladen.'
+      ?models.length?`${models.length} KI-Modell(e) geladen.`:'Dienst erreichbar · aktuell kein Modell geladen. GPU-Zuordnung ist erst mit geladenem Modell messbar.'
       :(data.ollama?.reason||'Ollama nicht erreichbar.');
     $('gpuModels').textContent=models.map(model=>
       `${model.name} · ${model.placement} · ${gpuLabel(model.vramGb)} / ${gpuLabel(model.sizeGb)} GiB VRAM / Modellgröße`
@@ -83,7 +83,7 @@
       ?'NVIDIA-Treiber/Grafikkarte prüfen. Ollama kann je nach System auch andere GPUs verwenden.'
       :cuda.status==='ok'&&!cuda.ready
         ?'CUDA/CTranslate2 ist nicht nutzbar. Bei automatischer Auswahl wird auf CPU gewechselt. Die Windows-Laufzeit ggf. mit GPU-Einstellung reparieren.'
-        :'CUDA-Status zeigt die technische Verfügbarkeit, nicht die tatsächlich ausgeführte Transkription. GPU-Auslastung während eines Auftrags beobachten.';
+        :'Das Auftragsprotokoll zeigt Gerät, Präzision, Batchgröße und Fallback-Gründe. Ollama wählt seine GPU unabhängig von WhisperX; CPU/Hybrid kann auch durch zu wenig VRAM entstehen. Details: logs/ollama-native.log.';
     $('gpuUpdated').textContent='Aktualisiert: '+new Date(data.timestamp).toLocaleTimeString('de-DE');
   }
   async function refreshGpu(){

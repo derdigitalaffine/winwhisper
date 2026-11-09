@@ -23,5 +23,5 @@ RUN --mount=type=secret,id=proxy_ca \
     /opt/venv/bin/pip check && /opt/venv/bin/pip freeze > /app/requirements.resolved.txt
 COPY . /app/
 RUN chmod +x /app/whisperx-cli
-LABEL io.winwhisper.engine="1.0.0"
+LABEL io.winwhisper.engine="1.0.3"
 ENTRYPOINT ["python3", "/app/container_entry.py"]

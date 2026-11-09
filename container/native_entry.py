@@ -41,6 +41,23 @@ def _ollama_ready(url: str) -> bool:
         return False
 
 
+def _ollama_environment(executable):
+    # The server ships its own CUDA runners. Never let torch's DLLs shadow them.
+    env = os.environ.copy()
+    site = Path(sys.prefix) / "Lib" / "site-packages"
+    paths = [p for p in env.get("PATH", "").split(os.pathsep)
+             if not str(Path(p)).casefold().startswith(str(site).casefold() + os.sep)]
+    env["PATH"] = os.pathsep.join([str(Path(executable).parent), *paths])
+    env.setdefault("OLLAMA_NUM_PARALLEL", "1")
+    env.setdefault("OLLAMA_DEBUG", "1")
+    # Preserve explicit GPU selection; report inherited overrides instead of
+    # silently changing user/system configuration.
+    for key in ("CUDA_VISIBLE_DEVICES", "OLLAMA_LLM_LIBRARY", "GGML_VK_VISIBLE_DEVICES"):
+        if key in env:
+            print(f"Ollama: {key}={env[key]} (geerbte Geräteauswahl)", file=sys.stderr, flush=True)
+    return env
+
+
 def _start_ollama():
     executable = os.environ.get("WINWHISPER_OLLAMA", "").strip()
     if not executable or not Path(executable).is_file():
@@ -66,7 +83,8 @@ def _start_ollama():
         stdin=subprocess.DEVNULL,
         stdout=log,
         stderr=log,
-        env=os.environ.copy(),
+        env=_ollama_environment(executable),
+        cwd=str(Path(executable).parent),
         creationflags=flags,
     )
     for _ in range(100):
@@ -102,6 +120,8 @@ def main():
     # WhisperX 3.8.6 decodes diarization input with its own load_audio helper and
     # passes pyannote an in-memory waveform. TorchCodec's optional file decoder
     # therefore must not become a native-startup dependency on Windows.
+    from whisperx_studio.gpu_runtime import prepare_cuda
+    prepare_cuda()
     _prepare_ffmpeg()
     ollama, log = _start_ollama()
     service = None

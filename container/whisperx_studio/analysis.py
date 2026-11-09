@@ -73,7 +73,7 @@ class OllamaClient:
             message = exc.read(3000).decode("utf-8", "replace")
             raise RuntimeError(f"Ollama: {message}") from exc
         except (OSError, urllib.error.URLError) as exc:
-            raise RuntimeError("Lokales Ollama nicht erreichbar (127.0.0.1:11434). Bitte Ollama starten. " + str(exc)) from exc
+            raise RuntimeError(f"Lokales Ollama nicht erreichbar ({OLLAMA}). Bitte Ollama starten. " + str(exc)) from exc
 
     def models(self):
         return [m["name"] for m in self.request("/api/tags").get("models", [])
@@ -93,7 +93,7 @@ class OllamaClient:
 
     def extract(self, model, text, context):
         # Use streaming so inactivity and an incomplete/truncated generation can be detected.
-        payload = {"model": model, "stream": True, "think": False, "keep_alive": "30s",
+        payload = {"model": model, "stream": True, "think": False, "keep_alive": "5m",
                    "format": SCHEMA, "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 4096},
                    "messages": [{"role": "system", "content": SYSTEM},
                                 {"role": "user", "content": "Sitzungskontext (nur Orientierung):\n" + context[:2500] + "\n\nTranskriptabschnitt:\n" + text}]}
