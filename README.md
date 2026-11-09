@@ -29,12 +29,11 @@ sollten vor der Verwendung geprüft werden.
 
 ## Installation unter Windows
 
-1. Öffne [Actions → Windows installer](https://github.com/derdigitalaffine/winwhisper/actions/workflows/windows-build.yml)
-   und lade im jüngsten erfolgreichen Lauf das Artefakt `WinWhisper-Windows-x64` herunter.
-   Das Artefakt enthält das Setup und eine SHA-256-Prüfsumme. Zum Herunterladen ist ein
-   GitHub-Konto mit Leserechten für das Repository erforderlich. GitHub bewahrt Artefakte
-   standardmäßig 90 Tage auf.
-2. Entpacke das Artefakt und starte `WinWhisper-Studio-1.0.0-Setup-x64.exe`.
+1. Öffne [GitHub Releases](https://github.com/derdigitalaffine/winwhisper/releases)
+   und lade das neueste signaturunabhängige Windows-x64-Setup und die zugehörige
+   SHA-256-Prüfsumme herunter. Die Releases werden nur nach erfolgreichem Windows-Build
+   automatisiert aus `main` veröffentlicht.
+2. Starte `WinWhisper-Studio-1.0.1-Setup-x64.exe` (oder die entsprechend neuere Version).
 3. Beim ersten Start öffnet sich der Einrichtungsassistent. **Windows nativ** ist der
    empfohlene Standard und benötigt weder WSL noch Docker Desktop. WinWhisper richtet eine
    eigene Python-3.12-Umgebung im Benutzer-Arbeitsordner ein. Fehlt Python 3.12 x64, versucht
@@ -76,10 +75,11 @@ gegebenenfalls noch fehlende Sprach- oder Ausrichtungsmodelle benötigt.
 ## Einen Windows-Build erstellen
 
 Ein erfolgreicher Lauf des GitHub-Actions-Workflows erstellt das x64-Setup automatisch
-bei einem Push auf `main`. Pull Requests führen denselben Windows-Test- und Buildpfad aus.
-Ein Build kann außerdem manuell über **Actions → Windows installer → Run workflow**
-gestartet werden. Das Setup und die Prüfsumme liegen danach beim jeweiligen Workflow-Lauf
-als Artefakt; sie werden nicht automatisch als dauerhafte GitHub-Veröffentlichung angelegt.
+bei einem Push auf `main`. Nach erfolgreichem Build werden Installer und SHA-256-Datei
+in einem versionierten [GitHub Release](https://github.com/derdigitalaffine/winwhisper/releases)
+veröffentlicht. Pull Requests führen denselben Windows-Test- und Buildpfad ohne Veröffentlichung
+aus. Ein Build kann außerdem manuell über **Actions → Windows installer → Run workflow**
+gestartet werden; bei manuellen Läufen bleibt es bei dem Build-Artefakt.
 
 Alternativ lässt sich das Setup auf Windows 11 x64 lokal bauen:
 
