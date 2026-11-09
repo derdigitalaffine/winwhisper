@@ -1,7 +1,7 @@
 {
   "name": "winwhisper-studio",
   "productName": "WinWhisper Studio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Von Verwaltungen für Verwaltungen: lokale Audio-Transkription und Protokolle",
   "author": "Dominik Tröster, Verbandsgemeinde Otterbach-Otterberg",
   "license": "MIT",
