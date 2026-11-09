@@ -61,7 +61,7 @@ class GpuPolicyTests(unittest.TestCase):
         def launch(command, env, **_kwargs):
             calls.append((command, dict(env)))
             return next(codes)
-        with patch.object(sys, 'argv', [str(ENTRY), *args]), patch.dict(os.environ, {}, clear=True), patch.object(cli, 'prepare_cuda'), patch.object(cli.subprocess, 'call', side_effect=launch), contextlib.redirect_stderr(io.StringIO()):
+        with patch.object(sys, 'argv', [str(ENTRY), *args]), patch.dict(os.environ, {}, clear=True), patch.object(cli, 'prepare_cuda'), patch.object(cli, 'run_worker', side_effect=launch), contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as outcome:
                 cli.main()
         return outcome.exception.code, calls
@@ -79,6 +79,12 @@ class GpuPolicyTests(unittest.TestCase):
         self.assertEqual((code, len(calls)), (76, 1))
         code, calls = self.supervisor(['audio.wav', '--studio-auto-device'], iter([1]))
         self.assertEqual((code, len(calls)), (1, 1))
+
+    def test_native_cuda_abort_is_retried_but_unrelated_crash_is_not(self):
+        for message, expected in [('Unable to load cudnn64_9.dll', 76), ('CUDA out of memory', 75), ('invalid audio', 3)]:
+            child = types.SimpleNamespace(stdout=io.StringIO(message), wait=lambda: 3)
+            with patch.object(cli.subprocess, 'Popen', return_value=child), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.run_worker(['python'], {}), expected)
 
     def test_worker_applies_selected_precision_and_removes_private_flags(self):
         captured = []

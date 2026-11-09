@@ -195,7 +195,7 @@ class DockerRuntime extends EventEmitter{
     super();this.workspace=path.resolve(workspace);this.resources=resources;this.run=runner;this.spawn=spawnProcess;this.platform=platform;
     this.enginePath=path.join(resources,fs.existsSync(path.join(resources,'container'))?'container':'engine');
     this.owner=crypto.createHash('sha256').update(this.workspace).digest('hex').slice(0,14);
-    this.name='winwhisper-'+this.owner;this.image='winwhisper/engine:1.0.0';
+    this.name='winwhisper-'+this.owner;this.image='winwhisper/engine:1.0.3';
     this.configFile=path.join(this.workspace,'runtime-docker.json');this.gpu=false;this.flight=null;
     const candidates=[path.join(process.env.ProgramFiles||'C:\\Program Files','Docker','Docker','resources','bin','docker.exe'),path.join(process.env.LOCALAPPDATA||'','Programs','DockerDesktop','resources','bin','docker.exe')];
     this.docker=platform==='win32'?(candidates.find(x=>fs.existsSync(x))||'docker'):'docker';

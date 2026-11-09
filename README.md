@@ -33,7 +33,7 @@ sollten vor der Verwendung geprüft werden.
    und lade das neueste signaturunabhängige Windows-x64-Setup und die zugehörige
    SHA-256-Prüfsumme herunter. Die Releases werden nur nach erfolgreichem Windows-Build
    automatisiert aus `main` veröffentlicht.
-2. Starte `WinWhisper-Studio-1.0.2-Setup-x64.exe` (oder die entsprechend neuere Version).
+2. Starte `WinWhisper-Studio-1.0.3-Setup-x64.exe` (oder die entsprechend neuere Version).
 3. Beim ersten Start öffnet sich der Einrichtungsassistent. **Windows nativ** ist der
    empfohlene Standard und benötigt weder WSL noch Docker Desktop. WinWhisper richtet eine
    eigene Python-3.12-Umgebung im Benutzer-Arbeitsordner ein. Fehlt Python 3.12 x64, versucht

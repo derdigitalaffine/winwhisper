@@ -20,6 +20,24 @@ def replace(args, name, value):
     args.extend([name, str(value)])
 
 
+def run_worker(command, env):
+    # CT2 can terminate in native code (e.g. a missing cuDNN DLL) before Python
+    # can catch it. Forward output and inspect only fatal-exit error lines.
+    process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1,
+        **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
+    tail = ""
+    for line in process.stdout:
+        print(line, end="", flush=True)
+        if not line.startswith("WinWhisper:"):
+            tail = (tail + line)[-8000:]
+    code = process.wait()
+    if code not in (0, 1, 2, 75, 76) and any(marker in tail.lower() for marker in
+            ("cudnn", "cublas", "cuda error", "cuda failed", "cuda driver", "out of memory")):
+        return 75 if gpu_failure(tail) == "oom" else 76
+    return code
+
+
 def main():
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
@@ -73,7 +91,7 @@ def main():
     env.pop("WINWHISPER_BATCH_LIMIT", None)
     command = [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]]
     while True:
-        code = subprocess.call(command, env=env, **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
+        code = run_worker(command, env)
         if code == 75 and env.get("WINWHISPER_COMPACT") != "1":
             print("WinWhisper: GPU-Speicher knapp; erneuter Versuch mit kompakter Präzision und Batch 1.", file=sys.stderr, flush=True)
             env.update(WINWHISPER_COMPACT="1", WINWHISPER_BATCH_LIMIT="1")
