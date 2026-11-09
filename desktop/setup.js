@@ -77,12 +77,12 @@
       ?models.length?`${models.length} KI-Modell(e) geladen.`:'Dienst erreichbar · aktuell kein Modell geladen.'
       :(data.ollama?.reason||'Ollama nicht erreichbar.');
     $('gpuModels').textContent=models.map(model=>
-      `${model.name} · ${model.placement} · ${gpuLabel(model.vramGb)} / ${gpuLabel(model.sizeGb)} GiB Modell/VRAM`
+      `${model.name} · ${model.placement} · ${gpuLabel(model.vramGb)} / ${gpuLabel(model.sizeGb)} GiB VRAM / Modellgröße`
     ).join('\n');
     $('gpuAdvice').textContent=!devices.length
       ?'NVIDIA-Treiber/Grafikkarte prüfen. Ollama kann je nach System auch andere GPUs verwenden.'
       :cuda.status==='ok'&&!cuda.ready
-        ?'WhisperX fällt bei automatischer Auswahl auf CPU zurück. Die Windows-Laufzeit ggf. mit GPU-Einstellung reparieren.'
+        ?'CUDA/CTranslate2 ist nicht nutzbar. Bei automatischer Auswahl wird auf CPU gewechselt. Die Windows-Laufzeit ggf. mit GPU-Einstellung reparieren.'
         :'CUDA-Status zeigt die technische Verfügbarkeit, nicht die tatsächlich ausgeführte Transkription. GPU-Auslastung während eines Auftrags beobachten.';
     $('gpuUpdated').textContent='Aktualisiert: '+new Date(data.timestamp).toLocaleTimeString('de-DE');
   }
