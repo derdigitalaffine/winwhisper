@@ -50,7 +50,7 @@ class NativeWindowsRuntime extends EventEmitter{
     this.configFile=path.join(this.runtimeRoot,'runtime.json');
     this.requirements=path.join(this.enginePath,'requirements-windows-py312.txt');
     this.entry=path.join(this.enginePath,'native_entry.py');
-    this.flight=null;this.child=null;this.health=null;this.upgradeAttempted=false;
+    this.flight=null;this.child=null;this.health=null;this.upgradeAttempted=false;this.startFlight=null;
     fs.mkdirSync(this.workspace,{recursive:true});
     for(const d of ['imports','exports','recordings','models','logs','home',path.join('runtime','native')])fs.mkdirSync(path.join(this.workspace,d),{recursive:true});
   }
@@ -157,7 +157,11 @@ class NativeWindowsRuntime extends EventEmitter{
     }
     return this.inspect();
   }
-  async start(){
+  start(){
+    if(!this.startFlight)this.startFlight=this._start().finally(()=>{this.startFlight=null;});
+    return this.startFlight;
+  }
+  async _start(){
     // Repair v1.0.2 CPU-only installs once when NVIDIA is available. Explicit
     // CPU choices made by the new setup are preserved. No model downloads.
     const saved=this._config();
@@ -260,7 +264,7 @@ class RuntimeManager extends EventEmitter{
     if(this.platform!=='win32'&&this.mode==='native')this.mode='docker';
   }
   get active(){return this.mode==='native'?this.native:this.docker;}
-  get flight(){return this.active.flight;}
+  get flight(){return this.active.flight||this.active.startFlight;}
   async select(mode){if(!['native','docker'].includes(mode))throw new Error('Unbekannte Laufzeit.');if(mode==='native'&&this.platform!=='win32')throw new Error('Windows nativ ist nur unter Windows verfügbar.');this.mode=mode;atomicJSON(this.configFile,{version:1,mode});return this.inspect();}
   async inspect(){const result=await this.active.inspect();return {...result,mode:this.mode,availableModes:this.platform==='win32'?['native','docker']:['docker']};}
   prepare(options){return this.active.prepare(options);}

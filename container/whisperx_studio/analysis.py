@@ -73,7 +73,7 @@ class OllamaClient:
             message = exc.read(3000).decode("utf-8", "replace")
             raise RuntimeError(f"Ollama: {message}") from exc
         except (OSError, urllib.error.URLError) as exc:
-            raise RuntimeError("Lokales Ollama nicht erreichbar (127.0.0.1:11434). Bitte Ollama starten. " + str(exc)) from exc
+            raise RuntimeError(f"Lokales Ollama nicht erreichbar ({OLLAMA}). Bitte Ollama starten. " + str(exc)) from exc
 
     def models(self):
         return [m["name"] for m in self.request("/api/tags").get("models", [])

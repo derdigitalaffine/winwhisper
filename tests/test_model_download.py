@@ -51,7 +51,8 @@ class ModelDownloadTests(unittest.TestCase):
                 self.assertTrue(status["installed"])
                 self.assertTrue(status["cached"])
                 self.assertFalse(status["legacy"])
-                self.assertGreater(status["size_mb"], 1)
+                # The UI reports one decimal place; 1 MiB + 1 byte rounds to 1.0.
+                self.assertEqual(status["size_mb"], 1.0)
 
                 self.assertTrue(model_download.remove("tiny"))
                 self.assertFalse(tiny_root.exists())
