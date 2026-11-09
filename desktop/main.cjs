@@ -5,6 +5,7 @@ const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {randomUUID}=require('node:crypto');
 const {RuntimeManager,run}=require('./runtime.cjs');
+const {GpuDiagnostics}=require('./gpu-diagnostics.cjs');
 const {Backend}=require('./backend.cjs');
 const {WorkspaceFiles}=require('./files.cjs');
 const {WavWriter,repairRecordings}=require('./wav.cjs');
@@ -13,7 +14,7 @@ app.setName('WinWhisper Studio');
 if(process.platform==='win32')app.setAppUserModelId('de.local.winwhisper.studio');
 const TRUSTED='winwhisper://app/index.html';
 protocol.registerSchemesAsPrivileged([{scheme:'winwhisper',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true,stream:true}}]);
-let win,runtime,backend,files,lastState=null,capture=null,reconnecting=null,restoring=false,closing=false,quitting=false,closeTimer,fileTransfer=false;
+let win,runtime,gpuDiagnostics,backend,files,lastState=null,capture=null,reconnecting=null,restoring=false,closing=false,quitting=false,closeTimer,fileTransfer=false;
 const resourceRoot=()=>app.isPackaged?process.resourcesPath:path.resolve(__dirname,'..');
 const allowed=new Set(['init','refresh','logs','cancel','waveform','settings','transcribe','generate','setup_speakers','metadata','update_segment','speakers','cut','trim','undo','model_pull','warmup_asr','remove_asr']);
 
@@ -168,6 +169,7 @@ else{
   app.whenReady().then(()=>{
     const resources=app.isPackaged?process.resourcesPath:path.resolve(__dirname,'..');
     runtime=new RuntimeManager({workspace:path.join(app.getPath('userData'),'workspace'),resources});
+    gpuDiagnostics=new GpuDiagnostics(runtime);
     files=new WorkspaceFiles(runtime.workspace);backend=new Backend(runtime);
     const assets=new Set(['index.html','styles.css','app.js','renderer-core.js','setup.js','native-recorder.js','pcm-worklet.js','icon.svg','icon.png']);
     protocol.handle('winwhisper',request=>{
@@ -198,6 +200,7 @@ else{
     ipcMain.handle('studio:file',(e,mode,data)=>{checkSender(e);return chooseFile(mode,data);});
     ipcMain.handle('studio:recent',(e,file)=>{checkSender(e);if(!lastState?.recent.some(r=>r.path===file))throw new Error('Projekt ist nicht in der Bibliothek.');return backend.request('open_project',{path:file});});
     ipcMain.handle('studio:audio',async(e,action,data={})=>{checkSender(e);if(action==='start')return startCapture();if(action==='append')return appendCapture(data.id,data.sequence,data.pcm);if(action==='stop')return stopCapture(data.id);throw new Error('Ungültige Audioaktion.');});
+    ipcMain.handle('studio:gpu-diagnostics',(e)=>{checkSender(e);return gpuDiagnostics.snapshot({transcriptionDevice:lastState?.settings?.device||'auto'});});
     ipcMain.handle('studio:setup',async(e,action,data={})=>{
       checkSender(e);
       if(action==='status')return runtime.inspect();
