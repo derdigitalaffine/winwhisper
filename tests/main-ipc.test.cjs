@@ -4,7 +4,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),vm=requir
 const {EventEmitter}=require('node:events');
 async function harness(t){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'winwhisper-main-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
-  const handlers=new Map(),events=[],protocols=new Map(),fetches=[];let win,options,requestPermission,checkPermission,schemes,openChoice={canceled:true};
+  const handlers=new Map(),events=[],protocols=new Map(),fetches=[],gpuCalls=[];let win,options,requestPermission,checkPermission,schemes,openChoice={canceled:true};
   class Runtime extends EventEmitter{
     constructor({workspace}){super();this.workspace=workspace;this.mode='native';this.flight=null;fs.mkdirSync(path.join(workspace,'recordings'),{recursive:true});this.ready=false;}
     async inspect(){return {mode:this.mode,runtimeLabel:this.mode==='native'?'Windows nativ':'Docker / WSL 2',native:this.mode==='native',docker:this.mode==='docker'&&this.ready,linux:true,engine:this.ready,image:this.ready,ollama:this.mode==='docker'&&this.ready,ready:this.ready,workspace:this.workspace};}
@@ -31,11 +31,11 @@ async function harness(t){
   const app=new EventEmitter();Object.assign(app,{setName(){},setAppUserModelId(){},requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>dir,isPackaged:false,quit(){}});
   const electron={app,BrowserWindow:Window,ipcMain:{handle:(n,fn)=>handlers.set(n,fn)},dialog:{showOpenDialog:async()=>openChoice,showErrorBox:(_t,msg)=>{throw new Error(msg);}},shell:{openPath:async()=>true,openExternal:async()=>true},protocol:{registerSchemesAsPrivileged:value=>schemes=value,handle:(scheme,handler)=>protocols.set(scheme,handler)},net:{fetch:async(url,options)=>{fetches.push({url,options});return new Response('asset',{status:200});}},session:{defaultSession:{setPermissionRequestHandler:fn=>requestPermission=fn,setPermissionCheckHandler:fn=>checkPermission=fn}}};
   const directory=path.resolve(__dirname,'../desktop');
-  const context={require:name=>name==='electron'?electron:name==='./runtime.cjs'?{RuntimeManager:Runtime,run:async()=>''}:name==='./backend.cjs'?{Backend}:name.startsWith('./')?require(path.join(directory,name)):require(name),__dirname:directory,process,console,setTimeout,clearTimeout,Uint8Array,ArrayBuffer,Buffer,URL,Response};
+  const context={require:name=>name==='electron'?electron:name==='./runtime.cjs'?{RuntimeManager:Runtime,run:async()=>''}:name==='./backend.cjs'?{Backend}:name==='./gpu-diagnostics.cjs'?{GpuDiagnostics:class {snapshot(options){gpuCalls.push(options);return Promise.resolve({mode:'native',gpu:{devices:[]},cuda:{ready:false},ollama:{models:[]}});}}}:name.startsWith('./')?require(path.join(directory,name)):require(name),__dirname:directory,process,console,setTimeout,clearTimeout,Uint8Array,ArrayBuffer,Buffer,URL,Response};
   vm.runInNewContext(fs.readFileSync(path.join(directory,'main.cjs'),'utf8'),context);
   await new Promise(r=>setImmediate(r));
   const trusted={sender:win.webContents,senderFrame:{url:win.webContents.getURL()}};
-  return {handlers,events,options,win,trusted,dir,protocols,fetches,schemes,openFile:file=>{openChoice={canceled:false,filePaths:[file]};},requestPermission:()=>requestPermission,checkPermission:()=>checkPermission};
+  return {handlers,events,options,win,trusted,dir,protocols,fetches,gpuCalls,schemes,openFile:file=>{openChoice={canceled:false,filePaths:[file]};},requestPermission:()=>requestPermission,checkPermission:()=>checkPermission};
 }
 test('main process uses isolated sandboxed renderer and blocks foreign/unknown IPC',async t=>{
   const h=await harness(t),web=h.options.webPreferences;assert.equal(web.nodeIntegration,false);assert.equal(web.contextIsolation,true);assert.equal(web.sandbox,true);
@@ -44,6 +44,16 @@ test('main process uses isolated sandboxed renderer and blocks foreign/unknown I
   assert.throws(()=>h.handlers.get('studio:recent')(h.trusted,'/tmp/not-allowed'),/Bibliothek/);
   assert.equal(h.win.openHandler().action,'deny');
 });
+test('GPU diagnostics are read-only and require the trusted application window',async t=>{
+  const h=await harness(t),diagnose=h.handlers.get('studio:gpu-diagnostics');
+  assert.equal(typeof diagnose,'function');
+  await assert.rejects(diagnose({...h.trusted,senderFrame:{url:'https://example.invalid'}}),/autorisiert/);
+  const result=await diagnose(h.trusted);
+  assert.equal(result.mode,'native');
+  assert.equal(h.gpuCalls.length,1);
+  assert.equal(h.gpuCalls[0].transcriptionDevice,'auto');
+});
+
 test('missing native runtime leaves a usable setup UI and seven output profiles',async t=>{
   const h=await harness(t);assert.equal(await h.handlers.get('studio:command')(h.trusted,'init'),true);
   assert(h.events.some(e=>e.type==='setup_status'&&!e.data.ready&&e.data.mode==='native'));const state=h.events.find(e=>e.type==='state').data;assert.equal(state.profiles.length,7);assert.equal(state.busy,false);
