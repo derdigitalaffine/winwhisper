@@ -81,12 +81,22 @@ function Ensure-WhisperPython {
   if ($LASTEXITCODE -ne 0) { throw 'Pip-Upgrade für die lokale Python-Umgebung fehlgeschlagen.' }
 
   $torchPackages = @('torch==2.8.0','torchaudio==2.8.0','torchvision==0.23.0')
-  $hasNvidia = [bool](Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue)
+  # GUI launches may not inherit the updated NVIDIA PATH.
+  $smi = @('nvidia-smi.exe', (Join-Path $env:SystemRoot 'System32\nvidia-smi.exe'), (Join-Path $env:ProgramFiles 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'))
+  $hasNvidia = $false
+  foreach ($candidate in $smi) {
+    try {
+      $devices = & $candidate -L 2>$null
+      if ($LASTEXITCODE -eq 0 -and $devices -match 'GPU') { $hasNvidia = $true; break }
+    } catch {}
+  }
+  # The same bootstrap must run in setup, health checks and actual workers.
+  $env:PYTHONPATH = Split-Path -Parent $requirements
   if ($Device -eq 'gpu' -and -not $hasNvidia) { throw 'NVIDIA-GPU erforderlich, aber nvidia-smi wurde nicht gefunden. NVIDIA-Treiber prüfen oder CPU auswählen.' }
   $usingCuda = $Device -ne 'cpu' -and $hasNvidia
   if ($usingCuda) {
     Write-Output 'Installiere PyTorch mit CUDA 12.8 (NVIDIA-GPU erkannt).'
-    & $pythonExe -m pip install --disable-pip-version-check --no-input --upgrade --index-url https://download.pytorch.org/whl/cu128 @torchPackages
+    & $pythonExe -m pip install --disable-pip-version-check --no-input --upgrade --force-reinstall --index-url https://download.pytorch.org/whl/cu128 @torchPackages
     if ($LASTEXITCODE -ne 0) {
       if ($Device -eq 'gpu') { throw 'CUDA-PyTorch konnte nicht installiert werden. GPU-Modus wurde ausdrücklich angefordert.' }
       Write-Output 'CUDA-Paketinstallation fehlgeschlagen; automatischer Wechsel auf CPU.'
@@ -101,27 +111,28 @@ function Ensure-WhisperPython {
 
   & $pythonExe -m pip install --disable-pip-version-check --no-input --upgrade -r $requirements
   if ($LASTEXITCODE -ne 0) { throw 'Installation der WhisperX-Requirements für die lokale Umgebung fehlgeschlagen.' }
-  $selfTest = 'import imageio_ffmpeg,torch,ctranslate2,faster_whisper,whisperx; print("native-ok")'
+  $selfTest = 'from whisperx_studio.gpu_runtime import prepare_cuda; prepare_cuda(); import imageio_ffmpeg,torch,ctranslate2,faster_whisper,whisperx; print("native-ok")'
   & $pythonExe -c $selfTest
   if ($LASTEXITCODE -ne 0) { throw 'Der WhisperX-Selbsttest nach der Einrichtung ist fehlgeschlagen.' }
 
+  $cudaInstalled = $usingCuda
   if ($usingCuda) {
-    $cudaTest = 'import torch,ctranslate2; assert torch.cuda.is_available(), "PyTorch erkennt CUDA nicht"; assert ctranslate2.get_cuda_device_count()>0, "CTranslate2 erkennt keine GPU"; assert ctranslate2.get_supported_compute_types("cuda"), "CTranslate2 kann CUDA nicht verwenden"; print("cuda-ok")'
-    & $pythonExe -c $cudaTest
-    if ($LASTEXITCODE -ne 0) {
-      if ($Device -eq 'gpu') { throw 'GPU-Prüfung fehlgeschlagen: PyTorch und CTranslate2 müssen beide CUDA verwenden können.' }
-      Write-Output 'GPU-Prüfung fehlgeschlagen; stelle die funktionsfähige CPU-Laufzeit wieder her.'
+    $cudaTest = 'import json; from whisperx_studio.gpu_runtime import probe; result=probe(); print(json.dumps(result)); raise SystemExit(0 if result["ready"] else 1)'
+    $diagnostic = & $pythonExe -c $cudaTest
+    $cudaExit = $LASTEXITCODE
+    Write-Output $diagnostic
+    if ($cudaExit -ne 0) {
+      if ($Device -eq 'gpu') { throw 'GPU-Prüfung fehlgeschlagen. Details siehe CUDA-Diagnose oben; NVIDIA-Treiber prüfen.' }
+      Write-Output 'GPU-Prüfung fehlgeschlagen; CPU-Fallback aktiv. CUDA-Pakete bleiben für spätere GPU-Erkennung installiert.'
       $usingCuda = $false
-      & $pythonExe -m pip install --disable-pip-version-check --no-input --upgrade --force-reinstall --index-url https://download.pytorch.org/whl/cpu @torchPackages
-      if ($LASTEXITCODE -ne 0) { throw 'CPU-Fallback nach CUDA-Fehler fehlgeschlagen.' }
-      & $pythonExe -c $selfTest
-      if ($LASTEXITCODE -ne 0) { throw 'Der WhisperX-Selbsttest der CPU-Ersatzlaufzeit ist fehlgeschlagen.' }
     }
   }
+  & $pythonExe -m pip check
+  if ($LASTEXITCODE -ne 0) { throw 'Die installierten Python-Pakete sind nicht kompatibel.' }
 
   # Matches desktop/runtime.cjs NATIVE_ENGINE_VERSION; write only after all tests.
-  $flavor = if ($usingCuda) { 'cu128' } else { 'cpu' }
-  $manifest = @{ version = 2; flavor = $flavor; gpu = [bool]$usingCuda; python = '3.12' } | ConvertTo-Json
+  $flavor = if ($cudaInstalled) { 'cu128' } else { 'cpu' }
+  $manifest = @{ version = 3; flavor = $flavor; gpu = [bool]$usingCuda; python = '3.12'; requestedDevice = $Device } | ConvertTo-Json
   $tempManifest = $manifestPath + '.tmp'
   [IO.File]::WriteAllText($tempManifest, $manifest, (New-Object System.Text.UTF8Encoding($false)))
   Move-Item -LiteralPath $tempManifest -Destination $manifestPath -Force

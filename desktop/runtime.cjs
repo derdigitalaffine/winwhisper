@@ -5,7 +5,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const crypto=require('node:crypto');
 
-const NATIVE_ENGINE_VERSION=2;
+const NATIVE_ENGINE_VERSION=3;
 
 function run(command,args,{timeout=30000,onLine=()=>{},cwd,env}={}){
   return new Promise((resolve,reject)=>{
@@ -24,6 +24,11 @@ function run(command,args,{timeout=30000,onLine=()=>{},cwd,env}={}){
     child.on('error',done);
     child.on('close',code=>done(code===0?null:new Error(output.slice(-4000)||`${command} beendet (${code}).`)));
   });
+}
+
+function nvidiaSmi(){
+  const candidates=[path.join(process.env.SystemRoot||'C:\\Windows','System32','nvidia-smi.exe'),path.join(process.env.ProgramFiles||'C:\\Program Files','NVIDIA Corporation','NVSMI','nvidia-smi.exe')];
+  return candidates.find(candidate=>fs.existsSync(candidate))||'nvidia-smi.exe';
 }
 
 function atomicJSON(file,value){
@@ -45,13 +50,16 @@ class NativeWindowsRuntime extends EventEmitter{
     this.configFile=path.join(this.runtimeRoot,'runtime.json');
     this.requirements=path.join(this.enginePath,'requirements-windows-py312.txt');
     this.entry=path.join(this.enginePath,'native_entry.py');
-    this.flight=null;this.child=null;this.health=null;
+    this.flight=null;this.child=null;this.health=null;this.upgradeAttempted=false;
     fs.mkdirSync(this.workspace,{recursive:true});
     for(const d of ['imports','exports','recordings','models','logs','home',path.join('runtime','native')])fs.mkdirSync(path.join(this.workspace,d),{recursive:true});
   }
   log(message){this.emit('log',String(message).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,''));}
   _config(){return readJSON(this.configFile,{});}
   _torchLib(){return path.join(this.venv,'Lib','site-packages','torch','lib');}
+  _nvidiaSmi(){
+    return nvidiaSmi();
+  }
   _env(){
     const ollama=this.findOllama();
     const additions=[path.join(this.venv,'Scripts'),this._torchLib()];
@@ -60,7 +68,8 @@ class NativeWindowsRuntime extends EventEmitter{
       WINWHISPER_DATA:this.workspace,WINWHISPER_ENGINE:this.enginePath,
       WINWHISPER_CLI:path.join(this.enginePath,'whisperx_cli.py'),WINWHISPER_PLATFORM:'windows-native',
       WINWHISPER_OLLAMA:ollama||'',WINWHISPER_OLLAMA_URL:'http://127.0.0.1:11435',
-      OLLAMA_HOST:'127.0.0.1:11435',OLLAMA_MODELS:path.join(this.workspace,'models','ollama'),OLLAMA_NO_CLOUD:'1',OLLAMA_KEEP_ALIVE:'30s',OLLAMA_MAX_LOADED_MODELS:'1',
+      OLLAMA_HOST:'127.0.0.1:11435',OLLAMA_MODELS:path.join(this.workspace,'models','ollama'),OLLAMA_NO_CLOUD:'1',OLLAMA_KEEP_ALIVE:'30s',OLLAMA_MAX_LOADED_MODELS:'1',OLLAMA_NUM_PARALLEL:'1',
+      PYTHONPATH:this.enginePath,PYTHONUTF8:'1',PYTHONUNBUFFERED:'1',
       HF_HOME:path.join(this.workspace,'models','huggingface-native'),TORCH_HOME:path.join(this.workspace,'models','torch'),HF_HUB_DISABLE_TELEMETRY:'1',HF_HUB_DISABLE_SYMLINKS_WARNING:'1',HF_HUB_DISABLE_XET:'1',PYANNOTE_METRICS_ENABLED:'0',DO_NOT_TRACK:'1',
       PATH:additions.filter(Boolean).join(path.delimiter)+path.delimiter+(process.env.PATH||'')};
   }
@@ -112,12 +121,12 @@ class NativeWindowsRuntime extends EventEmitter{
     if(!fs.existsSync(this.python))throw new Error('Die lokale Python-Umgebung wurde nicht vollständig erstellt.');
   }
   async _hasNvidia(){
-    try{await this.run('nvidia-smi.exe',['-L'],{timeout:7000});return true;}catch{return false;}
+    try{const output=await this.run(this._nvidiaSmi(),['-L'],{timeout:7000});return /GPU/.test(output);}catch{return false;}
   }
   async _healthCheck(){
     if(!fs.existsSync(this.python)||!fs.existsSync(this.entry)||!fs.existsSync(this.requirements))return {ok:false,error:'Native Engine-Dateien fehlen.'};
     try{
-      const code='import imageio_ffmpeg,torch,ctranslate2,faster_whisper,whisperx; print("ok")';
+      const code='from whisperx_studio.gpu_runtime import prepare_cuda; prepare_cuda(); import imageio_ffmpeg,torch,ctranslate2,faster_whisper,whisperx; print("ok")';
       await this.run(this.python,['-c',code],{timeout:60000,cwd:this.enginePath,env:this._env()});
       return {ok:true};
     }catch(error){return {ok:false,error:error.message.slice(-1000)};}
@@ -126,7 +135,7 @@ class NativeWindowsRuntime extends EventEmitter{
     const config=this._config();
     const python=fs.existsSync(this.python),ollama=!!this.findOllama();
     let engine=false,error='';
-    if(python&&config.version===NATIVE_ENGINE_VERSION){
+    if(python&&[2,NATIVE_ENGINE_VERSION].includes(config.version)){
       if(!this.health)this.health=await this._healthCheck();
       engine=!!this.health.ok;if(!engine)error='Die native Python-Umgebung ist unvollständig. „Einrichten / reparieren“ ausführen. '+(this.health.error||'');
     }else if(!python)error='Native Windows-Laufzeit ist noch nicht eingerichtet.';
@@ -149,6 +158,22 @@ class NativeWindowsRuntime extends EventEmitter{
     return this.inspect();
   }
   async start(){
+    // Repair v1.0.2 CPU-only installs once when NVIDIA is available. Explicit
+    // CPU choices made by the new setup are preserved. No model downloads.
+    const saved=this._config();
+    if(!this.upgradeAttempted&&saved.version===2&&!saved.gpu&&await this._hasNvidia()){
+      this.upgradeAttempted=true;
+      this.log('NVIDIA erkannt: bisherige CPU-Laufzeit wird automatisch für CUDA repariert …');
+      const script=path.join(this.resources,'scripts','Initialize-System.ps1');
+      try{
+        await this.run('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',script,'-Action','whisperx','-Device','auto','-Workspace',this.workspace,'-Resources',this.enginePath],
+          {timeout:30*60*1000,onLine:text=>this.log(text)});
+      }catch(error){
+        this.log('CUDA-Reparatur fehlgeschlagen; prüfe bestehende Laufzeit: '+error.message);
+        atomicJSON(this.configFile,saved);
+      }
+      this.health=null;
+    }
     const info=await this.inspect();if(!info.ready)throw new Error(info.error||'Bitte zuerst die native Windows-Laufzeit einrichten.');
     if(this.child&&this.child.exitCode===null)return this.child;
     const child=this.spawn(this.python,[this.entry],{cwd:this.enginePath,env:this._env(),windowsHide:true,shell:false,stdio:['pipe','pipe','pipe']});
@@ -243,4 +268,4 @@ class RuntimeManager extends EventEmitter{
   stop(){return this.active.stop();}
 }
 
-module.exports={RuntimeManager,NativeWindowsRuntime,DockerRuntime,run};
+module.exports={RuntimeManager,NativeWindowsRuntime,DockerRuntime,run,nvidiaSmi};

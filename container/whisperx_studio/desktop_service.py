@@ -414,10 +414,7 @@ class DesktopService:
             str(working),
             "--model",
             settings["asr_model"],
-            "--compute_type",
-            "int8",
-            "--batch_size",
-            "4",
+            "--studio-performance",
             "--vad_method",
             "silero",
             "--output_dir",
@@ -838,6 +835,8 @@ class DesktopService:
                         "model": r["model"],
                     },
                 )
+            elif e.get("type") == "diagnostic":
+                self.log(e["data"])
             elif e.get("type") == "error":
                 error.append(str(e["data"]))
                 self.log(e["data"])

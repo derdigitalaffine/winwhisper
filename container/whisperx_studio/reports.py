@@ -43,7 +43,7 @@ class ReportClient(OllamaClient):
             "model": model,
             "stream": True,
             "think": False,
-            "keep_alive": "30s",
+            "keep_alive": "5m",
             "format": schema,
             "options": options,
             "messages": [

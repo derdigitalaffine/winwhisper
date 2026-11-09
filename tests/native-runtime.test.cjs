@@ -45,3 +45,23 @@ test('native runtime cannot be selected on non-Windows platforms',async t=>{
   const f=fixture(t),manager=new RuntimeManager({workspace:f.workspace,resources:f.resources,runner:async()=>{throw new Error('missing');},platform:'linux'});
   assert.equal(manager.mode,'docker');await assert.rejects(manager.select('native'),/nur unter Windows/);
 });
+
+test('legacy CPU runtime repairs CUDA once at start when NVIDIA is detected',async t=>{
+  const f=fixture(t),calls=[];
+  const rt=new NativeWindowsRuntime({workspace:f.workspace,resources:f.resources,platform:'win32',
+    runner:async(command,args)=>{calls.push({command,args});return 'GPU 0: Test';},spawnProcess:()=>fakeChild()});
+  fs.mkdirSync(path.dirname(rt.python),{recursive:true});fs.writeFileSync(rt.python,'fake');
+  fs.writeFileSync(rt.configFile,JSON.stringify({version:2,flavor:'cpu',gpu:false}));
+  await rt.start();await rt.start();
+  const repairs=calls.filter(c=>c.command==='powershell.exe');
+  assert.equal(repairs.length,1);assert(repairs[0].args.includes('auto'));
+});
+
+test('new explicit CPU setup remains CPU and never triggers an automatic CUDA install',async t=>{
+  const f=fixture(t),calls=[];
+  const rt=new NativeWindowsRuntime({workspace:f.workspace,resources:f.resources,platform:'win32',
+    runner:async(command,args)=>{calls.push({command,args});return 'ok';},spawnProcess:()=>fakeChild()});
+  fs.mkdirSync(path.dirname(rt.python),{recursive:true});fs.writeFileSync(rt.python,'fake');
+  fs.writeFileSync(rt.configFile,JSON.stringify({version:3,flavor:'cpu',gpu:false,requestedDevice:'cpu'}));
+  await rt.start();assert(!calls.some(c=>c.command==='powershell.exe'));
+});

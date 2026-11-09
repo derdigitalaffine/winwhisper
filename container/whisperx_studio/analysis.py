@@ -93,7 +93,7 @@ class OllamaClient:
 
     def extract(self, model, text, context):
         # Use streaming so inactivity and an incomplete/truncated generation can be detected.
-        payload = {"model": model, "stream": True, "think": False, "keep_alive": "30s",
+        payload = {"model": model, "stream": True, "think": False, "keep_alive": "5m",
                    "format": SCHEMA, "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 4096},
                    "messages": [{"role": "system", "content": SYSTEM},
                                 {"role": "user", "content": "Sitzungskontext (nur Orientierung):\n" + context[:2500] + "\n\nTranskriptabschnitt:\n" + text}]}

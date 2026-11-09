@@ -127,7 +127,7 @@ class WindowsService(base.DesktopService):
             text=True,
             errors="replace",
             bufsize=1,
-            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+            creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)),
         )
         self.proc = proc
         finished = threading.Event()
@@ -219,7 +219,8 @@ class WindowsService(base.DesktopService):
         self.live_stop.unlink(missing_ok=True)
         command = self.cli_command(
             "--live", "--audio", str(path), "--output", str(out),
-            "--stop-file", str(self.live_stop), "--language", self.settings["language"]
+            "--stop-file", str(self.live_stop), "--language", self.settings["language"],
+            "--device", self.settings["device"]
         )
         kwargs = {
             "cwd": str(base.ROOT),
@@ -229,7 +230,7 @@ class WindowsService(base.DesktopService):
             "errors": "replace",
         }
         if os.name == "nt":
-            kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            kwargs["creationflags"] = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0))
         else:
             kwargs["start_new_session"] = True
         self.live_proc = subprocess.Popen(command, **kwargs)
@@ -244,7 +245,7 @@ class WindowsService(base.DesktopService):
                             {k: event[k] for k in ("start", "end", "text", "words") if k in event}
                         )
                         self.emit("live", event)
-                    elif event.get("type") == "error":
+                    elif event.get("type") in ("error", "diagnostic", "ready"):
                         self.log(event.get("message", "Live-Fehler"))
                 except (ValueError, TypeError, AttributeError):
                     self.log(line)
@@ -275,8 +276,7 @@ class WindowsService(base.DesktopService):
             "Studio_" + base.dt.datetime.now().strftime("%Y%m%d-%H%M%S-") + base.uuid.uuid4().hex[:5]
         )
         cmd = self.cli_command(
-            str(working), "--model", settings["asr_model"], "--compute_type", "int8",
-            "--batch_size", "4", "--vad_method", "silero", "--output_dir", str(out)
+            str(working), "--model", settings["asr_model"], "--studio-performance", "--vad_method", "silero", "--output_dir", str(out)
         )
         if settings["device"] == "auto":
             cmd.append("--studio-auto-device")
